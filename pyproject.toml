@@ -5,7 +5,18 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "httpx2>=2.12.0",
-    "nicegui>=3.16.0",
-    "ultralytics[cpu]>=8.4.129",
+    "httpx2",
+    "nicegui",
+#    "torch",
+#    "ultralytics",
+#    "shapely",
+    "modlib",
 ]
+
+[tool.uv.sources]
+torch = { index = "pytorch" }
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

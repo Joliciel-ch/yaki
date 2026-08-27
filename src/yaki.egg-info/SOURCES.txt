@@ -1,0 +1,12 @@
+README.md
+pyproject.toml
+src/detect.py
+src/example.py
+src/export_model.py
+src/ia.py
+src/main.py
+src/yaki.egg-info/PKG-INFO
+src/yaki.egg-info/SOURCES.txt
+src/yaki.egg-info/dependency_links.txt
+src/yaki.egg-info/requires.txt
+src/yaki.egg-info/top_level.txt
