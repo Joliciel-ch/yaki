@@ -1,0 +1,14 @@
+[Unit]
+Description=wifi hotspot service
+After=NetworkManager.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/nmcli radio wifi on
+ExecStart=/usr/bin/nmcli device wifi hotspot ifname wlan0 ssid yaki password 00000000
+ExecStart=/sbin/iptables-restore /home/borel/yaki/hotspot.iptables
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

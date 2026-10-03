@@ -1,0 +1,82 @@
+{
+    "tooltip": {
+        "trigger": "axis",
+        "show": false
+        }
+    ,
+    "title": {
+        "left": "center"
+    },
+    "toolbox": {
+        "feature": {
+        }
+    },
+    "grid": {
+        "left": "0px",
+        "top": "0px",
+        "right": "10px",
+        "bottom": "0px"
+    },
+    "xAxis": {
+        "type": "time",
+        "splitLine": {
+            "show": true
+        },
+        "axisLabel": {
+            "fontSize": 18,
+            "hideOverlap": true
+        },
+
+        "breakArea": {
+            "show": false,
+            "zizagAmplitude": 0,
+            "itemStyle": {
+                "zizagAmplitude": 0
+            }
+        },
+        "breakLabelLayout": {
+            "moveOverlap": false
+        }
+    },
+    "yAxis": {
+        "type": "value",
+        "boundaryGap": [0, "100%"],
+        "splitLine": {
+            "show": false
+        }
+    },
+    "dataZoom": [
+        {
+            "type": "inside"
+        }
+    ],
+    "visualMap": {
+        "show": false,
+        "dimension": 1,
+        "pieces": [
+        {
+            "lt": 0,
+            "color": "red"
+        },
+        {
+            "lte": 20,
+            "color": "grey"
+        },
+        {
+            "gt": 20,
+            "lte": 80,
+            "color": "green"
+        },
+        {
+            "gt": 70,
+            "lte": 90,
+            "color": "green"
+        },
+        {
+            "gt": 90,
+            "color": "red"
+        }
+        ]
+    },
+    "series": []
+}

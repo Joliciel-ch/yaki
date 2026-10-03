@@ -1,0 +1,133 @@
+{
+    "graphic": [
+        {
+            "type": "circle",
+            "left": "center",
+            "top": "middle",
+            "z": -10,
+            "shape": {"r": 200},
+            "style": {
+                "fill": "rgba(255,255,255,0.8)",
+                "stroke": "white",
+                "lineWidth": 0
+            }
+            
+        },
+        {
+            "type": "circle",
+            "left": "center",
+            "top": "middle",
+            "z": -10,
+            "shape": {"r": 78},
+            "style": {
+                "fill": "rgba(0,0,0,0.3)",
+                "stroke": "white",
+                "lineWidth": 6
+            }
+        }
+    ],
+    "series": [
+        {
+        "type": "gauge",
+        "startAngle": 210,
+        "endAngle": -30,
+        "radius": "90%",
+        "min": 0,
+        "max": 100,
+        "splitNumber": 12,
+        "itemStyle": {
+            "color": "rgba(0,0,0,0.25)"
+        },
+        "axisLine": {
+            "roundCap": false,
+            "lineStyle": {
+                "width": 40,
+                "color": "white",
+                "shadowColor": "white",
+                "shadowBlur": 0,
+                "shadowOffsetX": 0,
+                "shadowOffsetY": 0
+            }
+        },
+        "pointer": {
+            "icon": "path://M2.9,0.7L2.9,0.7c1.4,0,2.6,1.2,2.6,2.6v115c0,1.4-1.2,2.6-2.6,2.6l0,0c-1.4,0-2.6-1.2-2.6-2.6V3.3C0.3,1.9,1.4,0.7,2.9,0.7z",
+            "width": 5,
+            "length": "50px",
+            "offsetCenter": [0, "-72%"],
+            "itemStyle": {
+                "shadowBlur": 2,
+                "shadowColor": "rgba(120, 36, 50, 0.5)",
+                "shadowOffsetY": 1,
+                "shadowOffsetX": 1,
+                "color": "white"
+            }
+        },
+        "progress": {
+            "show": true,
+            "overlap": false,
+            "roundCap": false,
+            "width": 40,
+            "clip": true
+        },
+        "axisTick": {
+            "distance": -30,
+            "length": 8,
+            "lineStyle": {
+            "color": "#fff",
+            "width": 0
+            }
+        },
+        "splitLine": {
+            "distance": -30,
+            "length": 30,
+            "lineStyle": {
+            "color": "#fff",
+            "width": 0
+            }
+        },
+        "axisLabel": {
+            "color": "inherit",
+            "distance": 40,
+            "fontSize": 0
+        },
+        "detail": {
+            "valueAnimation": true,
+            "color": "inherit",
+            "offsetCenter": ["0%", "5%"],
+            "formatter": "{v|{value}}{t|\nsur }{p| 0}{t| max.}",
+            "rich": {
+                "v": {
+                    "fontSize": 90,
+                    "fontWeight": 700,
+                    "padding": 10,    
+                    "align": "center",
+                    "lineHeight": 90, 
+                    "color": "white",
+                    "textShadowBlur":4,
+                    "textShadowColor": "black",
+                    "textShadowOffsetY": 0
+                },
+                "p": {
+                    "fontWeight": 600,
+                    "fontFamily": "Arial",
+                    "fontSize": 18,
+                    "align": "center",
+                    "color": "white"
+                },
+                "t": {
+                    "fontWeight": 400,
+                    "fontFamily": "Arial",
+                    "fontSize": 14,
+                    "align": "center",
+                    "color": "white"
+                }
+            }
+        },
+        "data": [
+            {
+            "value": 0
+            }
+        ]
+        }
+    ]
+}
