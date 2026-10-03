@@ -1,11 +1,27 @@
 [project]
 name = "yaki"
-version = "0.1.0"
-description = "Add your description here"
+version = "1.0.0"
+description = "Anonymous People Counter"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "httpx2>=2.12.0",
-    "nicegui>=3.16.0",
-    "ultralytics[cpu]>=8.4.129",
+    "httpx2",
+    "nicegui",
+    "orjsonl",
+    "starlette",
+    "ultralytics",
+    "uvicorn",
+    "lap",
+    "shapely"
 ]
+
+[project.scripts]
+yaki-server = "yaki.server:main"
+yaki-dev = "yaki.server:main_dev"
+yaki-camera = "yaki.camera:main"
+# yaki-client-aicam = "detect_aicam:main"
+# yaki-client-webcam = "detect_webcam:main"
+
+[build-system]
+requires = ["uv_build>=0.12.15,<0.13"]
+build-backend = "uv_build"
