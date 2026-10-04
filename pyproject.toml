@@ -9,10 +9,10 @@ dependencies = [
     "nicegui",
     "orjsonl",
     "starlette",
-    "ultralytics",
     "uvicorn",
     "lap",
-    "shapely"
+    "shapely",
+    "picamera2"
 ]
 
 [project.scripts]

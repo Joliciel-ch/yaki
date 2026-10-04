@@ -9,7 +9,7 @@ if [[ "$EUID" -ne 0 ]]; then
 fi
 
 if [ ! -v AP_PASSWORD ];  then
-    echo "Run this script with AP password you want:"
+    echo "Give the password you want for the wifi AP:"
     echo "  sudo env AP_PASSORD=SuperPassword ./setup.sh"
     exit 1
 fi
