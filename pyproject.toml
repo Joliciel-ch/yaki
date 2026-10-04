@@ -12,7 +12,10 @@ dependencies = [
     "uvicorn",
     "lap",
     "shapely",
-    "picamera2"
+    "picamera2; sys_platform == 'linux'",
+    "pillow",
+    "supervision",
+    "trackers"
 ]
 
 [project.scripts]
