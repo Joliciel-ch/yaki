@@ -13,7 +13,7 @@ dependencies = [
     "lap",
     "shapely",
     "picamera2; sys_platform == 'linux'",
-    "pillow",
+    "opencv-python",
     "supervision",
     "trackers"
 ]

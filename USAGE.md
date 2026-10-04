@@ -67,10 +67,8 @@ the `--display` flag:
 uv run python src/yaki/better_imx500_counter.py --display
 ```
 
-This opens a Tkinter window showing the camera image, counting line, and
-detected person boxes. Close the window or press Ctrl+C to stop. Install
-`python3-tk` if Tkinter is unavailable. Pillow is needed for rendering and is
-normally available with the Raspberry Pi camera packages.
+This opens an OpenCV window showing the camera image, counting line, and
+detected person boxes. Press **q** or Ctrl+C to stop.
 
 To save one annotated JPEG after the detector receives its first inference
 result, provide a path with `--save-frame`:

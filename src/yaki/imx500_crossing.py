@@ -8,17 +8,13 @@ import time
 from pathlib import Path
 from typing import Any
 
+import cv2
 import numpy as np
 import supervision as sv
 from trackers import ByteTrackTracker
-from PIL import Image
 from picamera2 import Picamera2
 from picamera2.devices import IMX500
-from yaki.better_imx500_counter import (
-    create_camera,
-    create_preview_window,
-    display_frame,
-)
+from picamera2.devices.imx500 import NetworkIntrinsics
 
 MODEL = "/usr/share/imx500-models/imx500_network_yolo11n_pp.rpk"
 CONFIDENCE_THRESHOLD = 0.80
@@ -27,6 +23,28 @@ COUNTING_LINE = ((640, 100), (640, 620))
 TRACK_TIMEOUT = 2.0
 STATUS_INTERVAL = 1.0
 PERSON_CLASS = 0
+
+def create_camera(
+    capture_images: bool = False,
+) -> tuple[IMX500, Picamera2, NetworkIntrinsics]:
+    imx500 = IMX500(MODEL)
+    intrinsics = imx500.network_intrinsics
+    if intrinsics is None:
+        intrinsics = NetworkIntrinsics()
+        intrinsics.task = "object detection"
+    elif intrinsics.task != "object detection":
+        raise RuntimeError(f"Expected object-detection model, got {intrinsics.task!r}")
+    intrinsics.update_with_defaults()
+
+    camera = Picamera2(imx500.camera_num)
+    preview_options = {
+        "controls": {"FrameRate": intrinsics.inference_rate},
+        "buffer_count": 12,
+    }
+    if capture_images:
+        preview_options["main"] = {"format": "RGB888"}
+    camera.configure(camera.create_preview_configuration(**preview_options))
+    return imx500, camera, intrinsics
 
 
 def find_people(
@@ -89,10 +107,9 @@ def annotate_frame(
     box_annotator: sv.BoxAnnotator,
     label_annotator: sv.LabelAnnotator,
     line_annotator: sv.LineZoneAnnotator,
-) -> Image.Image:
-    """Draw tracked boxes and the crossing line onto a captured RGB frame."""
-    # Supervision/OpenCV annotators use BGR; Picamera2 provides RGB888.
-    scene = frame[:, :, ::-1].copy()
+) -> np.ndarray:
+    """Draw detections onto a Picamera2 RGB888 frame in OpenCV's BGR order."""
+    scene = frame.copy()
     tracker_ids = detections.tracker_id
     confidences = detections.confidence
     if confidences is None:
@@ -108,8 +125,7 @@ def annotate_frame(
     scene = label_annotator.annotate(
         scene=scene, detections=detections, labels=labels
     )
-    scene = line_annotator.annotate(frame=scene, line_counter=line_zone)
-    return Image.fromarray(scene[:, :, ::-1])
+    return line_annotator.annotate(frame=scene, line_counter=line_zone)
 
 
 def main() -> None:
@@ -123,7 +139,7 @@ def main() -> None:
     parser.add_argument(
         "--display",
         action="store_true",
-        help="show an annotated live preview in a Tkinter window",
+        help="show an annotated live preview in an OpenCV window (press q to quit)",
     )
     args = parser.parse_args()
     capture_images = args.display or args.save_frame is not None
@@ -131,11 +147,12 @@ def main() -> None:
     imx500, camera, intrinsics = create_camera(capture_images=capture_images)
     print(f"Loading IMX500 model: {MODEL}")
     imx500.show_network_fw_progress_bar()
-    preview = create_preview_window() if args.display else None
     camera_started = False
     line_zone = make_line_zone()
 
     try:
+        if args.display:
+            cv2.namedWindow("IMX500 people counter", cv2.WINDOW_NORMAL)
         camera.start()
         camera_started = True
         width, height = camera.camera_configuration()["main"]["size"]
@@ -189,12 +206,13 @@ def main() -> None:
                     line_annotator,
                 )
                 if args.save_frame is not None and has_inference:
-                    annotated.save(args.save_frame, format="JPEG", quality=90)
+                    if not cv2.imwrite(str(args.save_frame), annotated):
+                        raise OSError(f"Could not save image to {args.save_frame}")
                     print(f"Saved annotated frame to {args.save_frame}")
                     args.save_frame = None
-                if preview is not None:
-                    window, label, state = preview
-                    if not display_frame(window, label, annotated, state):
+                if args.display:
+                    cv2.imshow("IMX500 people counter", annotated)
+                    if cv2.waitKey(1) & 0xFF == ord("q"):
                         break
 
             frames += 1
@@ -212,9 +230,8 @@ def main() -> None:
     finally:
         if camera_started:
             camera.stop()
-        if preview is not None:
-            window, _, _ = preview
-            window.destroy()
+        if args.display:
+            cv2.destroyAllWindows()
         print(
             f"Final count: IN={line_zone.in_count}, OUT={line_zone.out_count}, "
             f"TOTAL={line_zone.in_count + line_zone.out_count}"

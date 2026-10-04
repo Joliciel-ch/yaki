@@ -7,8 +7,8 @@ import argparse
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
+import cv2
 import numpy as np
 from picamera2 import Picamera2
 from picamera2.devices import IMX500
@@ -193,26 +193,24 @@ def annotate_frame(
     frame: np.ndarray,
     tracks: list[Track],
     line: tuple[Point, Point] = COUNTING_LINE,
-) -> Any:
-    """Return an RGB PIL image with the counting line and current tracks drawn."""
-    try:
-        from PIL import Image, ImageDraw
-    except ImportError as exc:
-        raise RuntimeError(
-            "Pillow is required for --save-frame and --display."
-        ) from exc
-
-    image = Image.fromarray(frame).convert("RGB")
-    draw = ImageDraw.Draw(image)
-    draw.line(line, fill="yellow", width=3)
+) -> np.ndarray:
+    """Draw the line and tracks onto a Picamera2 RGB888/OpenCV BGR frame."""
+    image = frame.copy()
+    start = (round(line[0][0]), round(line[0][1]))
+    end = (round(line[1][0]), round(line[1][1]))
+    cv2.line(image, start, end, (0, 255, 255), 3)
     for track in tracks:
         x1, y1, x2, y2 = track.box
-        box = tuple(map(round, (x1, y1, x2, y2)))
-        draw.rectangle(box, outline="lime", width=3)
-        draw.text(
-            (box[0], max(0, box[1] - 18)),
+        x1, y1, x2, y2 = map(round, (x1, y1, x2, y2))
+        cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 3)
+        cv2.putText(
+            image,
             f"Person {track.id} ({track.confidence:.2f})",
-            fill="lime",
+            (x1, max(18, y1 - 8)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (0, 255, 0),
+            2,
         )
     return image
 
@@ -223,51 +221,9 @@ def save_annotated_frame(
     path: str | Path,
     line: tuple[Point, Point] = COUNTING_LINE,
 ) -> None:
-    """Write one annotated camera frame to a JPEG file."""
-    annotate_frame(frame, tracks, line).save(path, format="JPEG", quality=90)
-
-
-def create_preview_window() -> tuple[Any, Any, dict[str, Any]]:
-    """Create a small Tkinter window for live annotated frames."""
-    try:
-        import tkinter as tk
-    except ImportError as exc:
-        raise RuntimeError(
-            "Tkinter is required for --display. Install the python3-tk package."
-        ) from exc
-
-    window = tk.Tk()
-    window.title("IMX500 people counter")
-    label = tk.Label(window)
-    label.pack()
-    state: dict[str, Any] = {"open": True}
-
-    def close_window() -> None:
-        state["open"] = False
-        window.withdraw()
-
-    window.protocol("WM_DELETE_WINDOW", close_window)
-    return window, label, state
-
-
-def display_frame(
-    window: Any,
-    label: Any,
-    image: Any,
-    state: dict[str, Any],
-) -> bool:
-    """Display an annotated PIL image; return False when the window was closed."""
-    if not state["open"]:
-        return False
-
-    from PIL import ImageTk
-
-    photo = ImageTk.PhotoImage(image)
-    label.configure(image=photo)
-    label.image = photo
-    window.update_idletasks()
-    window.update()
-    return state["open"]
+    """Write one annotated camera frame to a JPEG file using OpenCV."""
+    if not cv2.imwrite(str(path), annotate_frame(frame, tracks, line)):
+        raise OSError(f"Could not save image to {path}")
 
 
 def find_people(
@@ -315,7 +271,7 @@ def main() -> None:
     parser.add_argument(
         "--display",
         action="store_true",
-        help="show an annotated live preview in a Tkinter window",
+        help="show an annotated live preview in an OpenCV window (press q to quit)",
     )
     args = parser.parse_args()
 
@@ -324,11 +280,12 @@ def main() -> None:
     print(f"Loading IMX500 model: {MODEL}")
     imx500.show_network_fw_progress_bar()
 
-    preview = create_preview_window() if args.display else None
     camera_started = False
     counter: PeopleCounter | None = None
 
     try:
+        if args.display:
+            cv2.namedWindow("IMX500 people counter", cv2.WINDOW_NORMAL)
         camera.start()
         camera_started = True
 
@@ -357,9 +314,9 @@ def main() -> None:
                     save_annotated_frame(frame, tracks, args.save_frame)
                     print(f"Saved annotated frame to {args.save_frame}")
                     args.save_frame = None
-                if preview is not None:
-                    window, label, state = preview
-                    if not display_frame(window, label, annotated, state):
+                if args.display:
+                    cv2.imshow("IMX500 people counter", annotated)
+                    if cv2.waitKey(1) & 0xFF == ord("q"):
                         break
 
             frames += 1
@@ -378,9 +335,8 @@ def main() -> None:
     finally:
         if camera_started:
             camera.stop()
-        if preview is not None:
-            window, _, _ = preview
-            window.destroy()
+        if args.display:
+            cv2.destroyAllWindows()
         if counter is not None:
             print(f"Final count: {counter.status()}")
 
