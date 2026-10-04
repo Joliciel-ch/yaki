@@ -4,7 +4,6 @@ from pathlib import Path
 import random
 import threading
 import time
-from ultralytics.solutions.solutions import SolutionResults
 
 
 from nicegui import app
@@ -15,6 +14,10 @@ server_records = Path(__file__).parent.parent.parent / "server_records.jsonl"
 
 server_records.touch(exist_ok=True)
 
+@dataclass
+class Result:
+    ins: int = 0
+    outs: int = 0
 
 class RecordsManager:
     def __init__(self, record_file):
@@ -49,7 +52,6 @@ class CameraRecordsManager(RecordsManager):
 
     def __init__(self, record_file):
         super().__init__(record_file)
-        self.last_result: SolutionResults = SolutionResults()
         self.ins = 0
         self.outs = 0
 
@@ -63,22 +65,19 @@ class CameraRecordsManager(RecordsManager):
             "timestamp": datetime.now(UTC)
         })
 
-    def create_record(self, result):
-        if result.in_count != self.last_result.in_count or result.out_count != self.last_result.out_count:
+    def create_record(self, ins, outs):
+        if ins != self.ins or outs != self.outs:
             # t = time.perf_counter()
             self.notwriting.clear()
-            self.ins = result.in_count
-            self.outs = result.out_count
+            self.ins = ins
+            self.outs = outs
             orjsonl.append(self.file, {
                         "ins": self.ins,
                         "outs": self.outs,
                         "count": self.ins-self.outs,
-                        "tracks": result.total_tracks,
                         "timestamp": datetime.now(UTC)
                     })
             self.notwriting.set()
-        self.last_result = result
-
 
 class ServerRecordsManager(RecordsManager):
 

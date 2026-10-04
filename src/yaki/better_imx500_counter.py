@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
+import argparse
 import time
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 from picamera2 import Picamera2
@@ -12,9 +15,9 @@ from picamera2.devices import IMX500
 from picamera2.devices.imx500 import NetworkIntrinsics
 
 MODEL = "/usr/share/imx500-models/imx500_network_yolo11n_pp.rpk"
-CONFIDENCE_THRESHOLD = 0.50
+CONFIDENCE_THRESHOLD = 0.80
 COUNTING_LINE = ((640, 100), (640, 620))
-MAX_MISSED_FRAMES = 15
+TRACK_TIMEOUT = 2.0
 MIN_IOU = 0.10
 MAX_CENTROID_DISTANCE = 0.08
 MAX_TRACKS = 30
@@ -31,19 +34,19 @@ class Track:
     id: int
     box: tuple[float, float, float, float]
     confidence: float
-    missed: int = 0
     side: float | None = None
     counted: bool = False
+    last_seen: float = 0.0
 
     @property
     def center(self) -> Point:
         x1, y1, x2, y2 = self.box
         return (x1 + x2) / 2, (y1 + y2) / 2
 
-    def update(self, detection: Detection) -> None:
+    def update(self, detection: Detection, now: float) -> None:
         self.box = detection[:4]
         self.confidence = detection[4]
-        self.missed = 0
+        self.last_seen = now
 
 
 def intersection_over_union(
@@ -85,7 +88,22 @@ class PeopleCounter:
         self.in_count = 0
         self.out_count = 0
 
-    def update(self, detections: list[Detection]) -> list[Track]:
+    def update(
+        self,
+        detections: list[Detection] | None,
+        now: float | None = None,
+    ) -> list[Track]:
+        now = time.monotonic() if now is None else now
+        self.tracks = [
+            track for track in self.tracks if now - track.last_seen <= TRACK_TIMEOUT
+        ]
+
+        # Missing inference output is not a negative detection. Keep existing
+        # tracks until they expire, without incrementing their missed-frame count.
+        if detections is None:
+            self._count_crossings()
+            return self.tracks
+
         detections = sorted(detections, key=lambda d: d[4], reverse=True)[:MAX_TRACKS]
         candidates = []
         for track_index, track in enumerate(self.tracks):
@@ -110,21 +128,14 @@ class PeopleCounter:
         for _, track_index, detection_index in sorted(candidates):
             if track_index in matched_tracks or detection_index in matched_detections:
                 continue
-            self.tracks[track_index].update(detections[detection_index])
+            self.tracks[track_index].update(detections[detection_index], now)
             matched_tracks.add(track_index)
             matched_detections.add(detection_index)
 
-        for index, track in enumerate(self.tracks):
-            if index not in matched_tracks:
-                track.missed += 1
-
-        self.tracks = [
-            track for track in self.tracks if track.missed <= MAX_MISSED_FRAMES
-        ]
         for index, detection in enumerate(detections):
             if index not in matched_detections and len(self.tracks) < MAX_TRACKS:
                 self.tracks.append(
-                    Track(self.next_id, detection[:4], detection[4])
+                    Track(self.next_id, detection[:4], detection[4], last_seen=now)
                 )
                 self.next_id += 1
 
@@ -155,7 +166,9 @@ class PeopleCounter:
         }
 
 
-def create_camera() -> tuple[IMX500, Picamera2, NetworkIntrinsics]:
+def create_camera(
+    capture_images: bool = False,
+) -> tuple[IMX500, Picamera2, NetworkIntrinsics]:
     imx500 = IMX500(MODEL)
     intrinsics = imx500.network_intrinsics
     if intrinsics is None:
@@ -166,52 +179,189 @@ def create_camera() -> tuple[IMX500, Picamera2, NetworkIntrinsics]:
     intrinsics.update_with_defaults()
 
     camera = Picamera2(imx500.camera_num)
-    camera.configure(
-        camera.create_preview_configuration(
-            controls={"FrameRate": intrinsics.inference_rate},
-            buffer_count=12,
-        )
-    )
+    preview_options = {
+        "controls": {"FrameRate": intrinsics.inference_rate},
+        "buffer_count": 12,
+    }
+    if capture_images:
+        preview_options["main"] = {"format": "RGB888"}
+    camera.configure(camera.create_preview_configuration(**preview_options))
     return imx500, camera, intrinsics
 
 
-def find_people(imx500: IMX500, camera: Picamera2, metadata: dict) -> list[Detection]:
+def annotate_frame(
+    frame: np.ndarray,
+    tracks: list[Track],
+    line: tuple[Point, Point] = COUNTING_LINE,
+) -> Any:
+    """Return an RGB PIL image with the counting line and current tracks drawn."""
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError as exc:
+        raise RuntimeError(
+            "Pillow is required for --save-frame and --display."
+        ) from exc
+
+    image = Image.fromarray(frame).convert("RGB")
+    draw = ImageDraw.Draw(image)
+    draw.line(line, fill="yellow", width=3)
+    for track in tracks:
+        x1, y1, x2, y2 = track.box
+        box = tuple(map(round, (x1, y1, x2, y2)))
+        draw.rectangle(box, outline="lime", width=3)
+        draw.text(
+            (box[0], max(0, box[1] - 18)),
+            f"Person {track.id} ({track.confidence:.2f})",
+            fill="lime",
+        )
+    return image
+
+
+def save_annotated_frame(
+    frame: np.ndarray,
+    tracks: list[Track],
+    path: str | Path,
+    line: tuple[Point, Point] = COUNTING_LINE,
+) -> None:
+    """Write one annotated camera frame to a JPEG file."""
+    annotate_frame(frame, tracks, line).save(path, format="JPEG", quality=90)
+
+
+def create_preview_window() -> tuple[Any, Any, dict[str, Any]]:
+    """Create a small Tkinter window for live annotated frames."""
+    try:
+        import tkinter as tk
+    except ImportError as exc:
+        raise RuntimeError(
+            "Tkinter is required for --display. Install the python3-tk package."
+        ) from exc
+
+    window = tk.Tk()
+    window.title("IMX500 people counter")
+    label = tk.Label(window)
+    label.pack()
+    state: dict[str, Any] = {"open": True}
+
+    def close_window() -> None:
+        state["open"] = False
+        window.withdraw()
+
+    window.protocol("WM_DELETE_WINDOW", close_window)
+    return window, label, state
+
+
+def display_frame(
+    window: Any,
+    label: Any,
+    image: Any,
+    state: dict[str, Any],
+) -> bool:
+    """Display an annotated PIL image; return False when the window was closed."""
+    if not state["open"]:
+        return False
+
+    from PIL import ImageTk
+
+    photo = ImageTk.PhotoImage(image)
+    label.configure(image=photo)
+    label.image = photo
+    window.update_idletasks()
+    window.update()
+    return state["open"]
+
+
+def find_people(
+    imx500: IMX500,
+    camera: Picamera2,
+    metadata: dict,
+) -> list[Detection] | None:
     outputs = imx500.get_outputs(metadata, add_batch=True)
-    if outputs is None:
-        return []
+    if outputs is None or len(outputs) < 3:
+        return None
 
     boxes, scores, classes = (np.asarray(output[0]) for output in outputs[:3])
     input_height = imx500.get_input_size()[1]
     detections = []
     for box, score, category in zip(boxes, scores, classes):
-        if float(score) < CONFIDENCE_THRESHOLD or int(category) != PERSON_CLASS:
+        if (
+            not np.isfinite(score)
+            or float(score) < CONFIDENCE_THRESHOLD
+            or int(category) != PERSON_CLASS
+        ):
             continue
         coords = np.asarray(box, dtype=np.float32) / input_height
         coords = imx500.convert_inference_coords(
             coords[[1, 0, 3, 2]], metadata, camera
         )
         x, y, width, height = map(float, coords)
-        detections.append((x, y, x + width, y + height, float(score)))
+        box_values = (x, y, x + width, y + height)
+        if (
+            all(np.isfinite(value) for value in box_values)
+            and width > 0
+            and height > 0
+        ):
+            detections.append((*box_values, float(score)))
     return detections
 
 
 def main() -> None:
-    imx500, camera, _ = create_camera()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--save-frame",
+        metavar="PATH",
+        type=Path,
+        help="save one annotated JPEG after the first inference result",
+    )
+    parser.add_argument(
+        "--display",
+        action="store_true",
+        help="show an annotated live preview in a Tkinter window",
+    )
+    args = parser.parse_args()
+
+    capture_images = args.display or args.save_frame is not None
+    imx500, camera, _ = create_camera(capture_images=capture_images)
     print(f"Loading IMX500 model: {MODEL}")
     imx500.show_network_fw_progress_bar()
-    camera.start()
 
-    width, height = camera.camera_configuration()["main"]["size"]
-    counter = PeopleCounter((width, height))
-    started = last_report = time.monotonic()
-    frames = 0
-    print(f"Camera: {width}x{height} | Counting line: {COUNTING_LINE}")
-    print("Counting people. Press Ctrl+C to stop.")
+    preview = create_preview_window() if args.display else None
+    camera_started = False
+    counter: PeopleCounter | None = None
 
     try:
+        camera.start()
+        camera_started = True
+
+        width, height = camera.camera_configuration()["main"]["size"]
+        counter = PeopleCounter((width, height))
+        started = last_report = time.monotonic()
+        frames = 0
+        print(f"Camera: {width}x{height} | Counting line: {COUNTING_LINE}")
+        print("Counting people. Press Ctrl+C to stop.")
+
         while True:
-            metadata = camera.capture_metadata()
-            tracks = counter.update(find_people(imx500, camera, metadata))
+            request = camera.capture_request()
+            try:
+                metadata = request.get_metadata()
+                detections = find_people(imx500, camera, metadata)
+                need_frame = args.display or args.save_frame is not None
+                frame = request.make_array("main") if need_frame else None
+            finally:
+                request.release()
+
+            assert counter is not None
+            tracks = counter.update(detections)
+            if frame is not None:
+                annotated = annotate_frame(frame, tracks)
+                if args.save_frame is not None and detections is not None:
+                    save_annotated_frame(frame, tracks, args.save_frame)
+                    print(f"Saved annotated frame to {args.save_frame}")
+                    args.save_frame = None
+                if preview is not None:
+                    window, label, state = preview
+                    if not display_frame(window, label, annotated, state):
+                        break
+
             frames += 1
             now = time.monotonic()
             if now - last_report >= STATUS_INTERVAL:
@@ -226,8 +376,13 @@ def main() -> None:
     except KeyboardInterrupt:
         print("\nStopping.")
     finally:
-        camera.stop()
-        print(f"Final count: {counter.status()}")
+        if camera_started:
+            camera.stop()
+        if preview is not None:
+            window, _, _ = preview
+            window.destroy()
+        if counter is not None:
+            print(f"Final count: {counter.status()}")
 
 
 if __name__ == "__main__":
