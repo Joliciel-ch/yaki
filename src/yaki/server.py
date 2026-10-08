@@ -6,7 +6,7 @@ from nicegui import Client, app, core, ui
 
 from yaki import config, records
 from yaki.ui import Dialog, chart, gauge, settings
-from yaki.ui.settings import camera_setting
+from yaki.ui.settings import camera_setting, display_logs
 
 ui.add_css('''
 
@@ -99,10 +99,12 @@ def setup() -> None:
         
         if "clients" not in app.storage.general["config"]:
             app.storage.general["config"]["clients"] = {}
+        
         app.storage.general["config"]["clients"].update(
-            { f"{data.get('host')}": dict(data) }
+            { f"{data.get('name')}": dict(data) }
         )
-        return {"hello there"}
+        config.save()
+        return {"Hello there"}
         # ui.notify(f"{name}: {data}")
         
     @app.get("/generate_204")
@@ -126,11 +128,8 @@ def setup() -> None:
     
     @ui.page('/cameras')
     def cameras():
-        with ui.row():
-            ui.space()
-            ui.button("back", on_click=lambda: ui.navigate.to("/")).props("round")
 
-        for ip, client_data in app.storage.general["config"]["clients"].items():
+        for name, client_data in app.storage.general["config"]["clients"].items():
             
             camera_setting(client_data)
 
@@ -138,6 +137,25 @@ def setup() -> None:
             #     app.storage.general["detect_results"] = str(httpx2.get(f'http://{host}/results').json())
 
             # ui.timer(interval=1, callback=infos)
+
+        with ui.row():
+            ui.space()
+            ui.button("back", on_click=lambda: ui.navigate.to("/"))
+            
+    @ui.page('/logs')
+    def logs():
+
+        display_logs()
+
+            # def infos():
+            #     app.storage.general["detect_results"] = str(httpx2.get(f'http://{host}/results').json())
+
+            # ui.timer(interval=1, callback=infos)
+
+        with ui.row().classes("w-full"):
+            ui.space()
+            ui.button("back", on_click=lambda: ui.navigate.to("/"))
+            ui.button("reload", on_click=lambda: ui.navigate.reload())
 
     async def disconnect() -> None:
         """Disconnect all clients from current running server."""

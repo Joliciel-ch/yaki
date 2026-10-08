@@ -18,8 +18,14 @@ user=$(id -nu 1000)
 
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
+usermod -aG video $user
+
+cat > /etc/sudoers.d/yaki-reboot <<EOF
+$user ALL=(root) NOPASSWD: /usr/bin/systemctl reboot
+EOF
+
 # Configuration
-AP_CONNECTION="HotSpot"
+AP_CONNECTION="YakiHotSpot"
 ETH_CONNECTION="local-eth"
 
 AP_SSID="yaki"
@@ -69,16 +75,6 @@ echo "Removing old NetworkManager profiles..."
 nmcli connection delete "$AP_CONNECTION" 2>/dev/null || true
 nmcli connection delete "$ETH_CONNECTION" 2>/dev/null || true
 
-# Remove profiles that may already control these interfaces.
-while read -r connection; do
-    [[ -z "$connection" ]] && continue
-    nmcli connection delete "$connection" 2>/dev/null || true
-done < <(
-    nmcli -t -f NAME,DEVICE connection show |
-    awk -F: -v eth="$ETH_IFACE" -v wifi="$WIFI_IFACE" \
-        '$2 == eth || $2 == wifi { print $1 }'
-)
-
 echo "Creating static Ethernet connection..."
 nmcli connection add \
     type ethernet \
@@ -91,13 +87,20 @@ nmcli connection add \
 
 echo "Creating Wi-Fi access point..."
 
-nmcli radio wifi on
+sudo nmcli connection add type wifi ifname $WIFI_IFACE con-name $AP_CONNECTION ssid $AP_SSID
+sudo nmcli connection modify $AP_CONNECTION \
+  802-11-wireless.mode ap \
+  802-11-wireless.band bg \
+  wifi-sec.key-mgmt wpa-psk \
+  wifi-sec.psk $AP_PASSWORD \
+  wifi-sec.proto rsn \
+  wifi-sec.group ccmp \
+  wifi-sec.pairwise ccmp \
+  ipv4.method shared \
+  ipv4.addresses "$WIFI_IP/24" \
+  ipv6.method ignore \
+  connection.autoconnect yes
 
-nmcli device wifi hotspot \
-    ifname "$WIFI_IFACE" \
-    con-name "$AP_CONNECTION" \
-    ssid "$AP_SSID" \
-    password  "$AP_PASSWORD" 
 
 echo "Backing up dnsmasq configuration..."
 if [[ -f /etc/dnsmasq.conf ]]; then
@@ -107,11 +110,13 @@ fi
 
 cat > /etc/dnsmasq.conf <<EOF
 # Listen only on the local Ethernet and Wi-Fi interfaces
-interface=$ETH_IFACE
+#interface=$ETH_IFACE $WIFI_IFACE lo
 bind-interfaces
 
 # Local interface addresses
-listen-address=$ETH_IP
+# listen-address=$ETH_IP 
+#listen-address=$WIFI_IP 
+#listen-address=127.0.0.1
 
 # DHCP server on eth0
 dhcp-range=$ETH_IFACE,10.0.10.20,10.0.10.250,255.255.255.0,12h
@@ -120,7 +125,8 @@ dhcp-option=$ETH_IFACE,6,$ETH_IP
 
 # Catch-all DNS.
 # Every queried hostname resolves to the Wi-Fi/AP address.
-address=/#/$WIFI_IP
+#address=/yaki.local/127.0.0.1
+#address=/yaki.local/127.0.0.1
 
 # Do not use upstream DNS servers.
 no-resolv
@@ -142,29 +148,49 @@ dnsmasq --test
 
 echo "Bringing interfaces up..."
 nmcli connection up "$ETH_CONNECTION"
-nmcli connection up "$AP_CONNECTION"
 
 echo "Enabling dnsmasq..."
-systemctl enable dnsmasq
-systemctl restart dnsmasq
-
+systemctl disable dnsmasq
+systemctl stop dnsmasq
 
 echo "setting up yaki service"
+
+# ExecStart=nmcli radio wifi on
+# ExecStart=nmcli device wifi hotspot ifname $WIFI_IFACE ssid $AP_SSID password $AP_PASSWORD
+
+cat > /etc/systemd/system/yaki-hotspot.service <<EOF
+[Unit]
+Description=yaki hotspot
+After=NetworkManager.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=nmcli radio wifi on
+ExecStart=nmcli connection up "$AP_CONNECTION"
+StandardOutput=syslog
+StandardError=syslog
+
+[Install]
+WantedBy=multi-user.target
+EOF
 
 cat > /etc/systemd/system/yaki-camera.service <<EOF
 [Unit]
 Description=yaki camera service
-After=NetworkManager.service network-online.target
+After=yaki-hotspot.service systemd-udev-settle.service
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=$user
 Group=$user
+SupplementaryGroups=video
 ExecStart=/home/$user/.local/bin/uv run --directory $SCRIPT_DIR yaki-camera
 StandardOutput=syslog
 StandardError=syslog
 Restart=on-failure
+RestartSec=2
 
 [Install]
 WantedBy=multi-user.target
@@ -173,7 +199,7 @@ EOF
 cat > /etc/systemd/system/yaki-server.service <<EOF
 [Unit]
 Description=yaki server service
-After=NetworkManager.service network-online.target
+After=yaki-hotspot.service
 Wants=network-online.target
 
 [Service]
@@ -184,6 +210,7 @@ ExecStart=/home/$user/.local/bin/uv run --directory $SCRIPT_DIR yaki-server
 StandardOutput=syslog
 StandardError=syslog
 Restart=on-failure
+RestartSec=2
 
 [Install]
 WantedBy=multi-user.target
@@ -191,12 +218,12 @@ EOF
 
 systemctl daemon-reload
 
-systemctl stop yaki-server
-systemctl stop yaki-camera
+systemctl enable yaki-hotspot
 systemctl enable yaki-server
 systemctl enable yaki-camera
-systemctl start yaki-server
-systemctl start yaki-camera
+systemctl restart yaki-hotspot
+systemctl restart yaki-server
+systemctl restart yaki-camera
 
 echo
 echo "Setup complete."

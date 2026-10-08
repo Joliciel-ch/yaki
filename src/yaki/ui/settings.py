@@ -1,4 +1,7 @@
 
+import io
+import subprocess
+
 import httpx2
 from nicegui import app, events, ui
 
@@ -95,9 +98,14 @@ def dialog():
                         app.storage.general, ("config", "correction"), forward=lambda x: int(x))
 
                     ui.button("Live View", on_click=lambda: ui.navigate.to("/cameras"))
+                    ui.button("Logs", on_click=lambda: ui.navigate.to("/logs"))
                     ui.button("Update", on_click=lambda: records.server.create_record())
 
                     ui.button('rootCA', on_click=lambda: ui.download.file('/home/borel/yaki/root.crt'))
+                    ui.button("Reboot", color="red", on_click=lambda: subprocess.run(
+                                                                        ["sudo", "/usr/bin/systemctl", "reboot"],
+                                                                        check=True,
+                                                                    ))
         # with ui.grid(columns=2).classes("text-white"):
         #     # ui.label("Settings").classes("text-xl")
         #     # ui.space()
@@ -117,7 +125,7 @@ def dialog():
 
 def camera_setting(data):
 
-    host = f"http://{data.get("host")}:{data.get("port")}"
+    host = f"http://{data.get("hostname", "yaki.local")}:{data.get("port")}"
 
     if data.get("host") not in app.storage.general["region_points"]:
         app.storage.general["region_points"][data.get("host")] = {}
@@ -151,4 +159,28 @@ def camera_setting(data):
 
         video_image = ui.interactive_image(f'{host}/frame', on_mouse=mouse_handler, events=['mousedown']) #.classes('max-w-[1280px]')
 
+        with ui.expansion("data"):
+            ui.json_editor({"content": {'json': data}})
+
         ui.timer(interval=0.1, callback=video_image.force_reload)
+
+def display_logs():
+    ui.label("camera service")
+    cam_service = ui.log(max_lines=20).classes('w-full')
+    proc = subprocess.Popen(["journalctl", "-u", "yaki-camera"], stdout=subprocess.PIPE)
+    for line in io.TextIOWrapper(proc.stdout, encoding="utf-8"):  # or another encoding
+        cam_service.push(line)
+
+    ui.label("server service")
+    server_service = ui.log(max_lines=20).classes('w-full')
+    proc = subprocess.Popen(["journalctl", "-u", "yaki-server"], stdout=subprocess.PIPE)
+    for line in io.TextIOWrapper(proc.stdout, encoding="utf-8"):  # or another encoding
+        server_service.push(line)
+
+    ui.label("hotspot service")
+    ap_service = ui.log(max_lines=20).classes('w-full')
+    proc = subprocess.Popen(["journalctl", "-u", "yaki-hotspot"], stdout=subprocess.PIPE)
+    for line in io.TextIOWrapper(proc.stdout, encoding="utf-8"):  # or another encoding
+        ap_service.push(line)
+    
+    ui.json_editor({"content": {'json': app.storage.general["config"]}})

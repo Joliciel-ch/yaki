@@ -33,26 +33,25 @@ server = httpx2.Client(
 img = missing_jpg.read_bytes()
 
 def send_last_record():
-    while True:
         
-        headers = {"Content-type": "application/json",
-                "Accept": "text/plain"}
-        body = orjson.dumps(records.cam.get_last_record())
-        try:
-            response = server.post(
-                f"/record/{conf.get('name')}", content=body, headers=headers
-            )
-        except Exception as e:
-            print("error while sending results", e)
-        time.sleep(1)
+    headers = {"Content-type": "application/json",
+            "Accept": "text/plain"}
+    body = orjson.dumps(records.cam.get_last_record())
+    try:
+        response = server.post(
+            f"/record/{conf.get('name')}", content=body, headers=headers
+        )
+    except Exception as e:
+        print("error while sending results", e)
 
 def process():
-    if conf.get("camera") == "laptop":
+    if conf.get("camera") == "imx500":
 
         def callback(ins, outs, _img):
             global img
             img = _img
-            records.cam.create_record(ins, outs)
+            if records.cam.create_record(ins, outs):
+                send_last_record()
 
         imx500_crossing.process(callback)
 
@@ -78,19 +77,22 @@ async def get_results(request: Request):
 
 async def get_region(request: Request):
     args = request.scope["query_string"].decode().split("&")
-    v = imx500_crossing.LINE_ZONE.vector
     if len(args) == 4:
         args = list(map(int, args))
-        v.start.x = args[0]
-        v.start.y = args[1]
-        v.end.x = args[2]
-        v.end.y = args[3]
+        imx500_crossing.LINE_ZONE = sv.LineZone(
+            start=sv.Point(x=int(args[0]), y=int(args[1])),
+            end=sv.Point(x=int(args[2]), y=int(args[3])),
+        )
+        conf["imx500"]["COUNTING_LINE"] = [
+            [args[0], args[1]], [args[2], args[3]]
+        ]
+        config.save("camera", conf)
         return JSONResponse("updated successfully")
     return JSONResponse([
-        v.start.x,
-        v.start.y,
-        v.end.x,
-        v.end.y
+        imx500_crossing.LINE_ZONE.vector.start.x,
+        imx500_crossing.LINE_ZONE.vector.start.y,
+        imx500_crossing.LINE_ZONE.vector.end.x,
+        imx500_crossing.LINE_ZONE.vector.end.y
     ])
 
 def say_hello():

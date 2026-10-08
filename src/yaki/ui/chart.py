@@ -168,7 +168,7 @@ async def render():
         ui.icon("bar_chart", size="lg", color="white")
         ui.label("Historique").classes("text-xl text-white/90 font-semibold capitalize")
         ui.space()
-        ui.toggle({"w": "Semaine", "d": "Aujourd'hui", "h": "Dernière heures"}, 
+        ui.toggle({"w": "Semaine", "d": "Aujourd'hui", "h": "Dernière heure"}, 
                 value = "h").props("unelevated rounded size='md'").classes("bg-black/40 text-white ").on("click", update_chart_range).bind_value(app.storage.client, "chart_selected_zoom")
     
         ui.space()

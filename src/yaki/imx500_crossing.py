@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import time
 from typing import Any
 
 import cv2
@@ -14,21 +15,26 @@ from picamera2.devices import IMX500
 from picamera2.devices.imx500 import NetworkIntrinsics
 from trackers import ByteTrackTracker
 
-MODEL = "/usr/share/imx500-models/imx500_network_yolo11n_pp.rpk"
-CONFIDENCE_THRESHOLD = 0.2
-TRACKING_FLOOR = 0.20
-COUNTING_LINE = ((640, 100), (640, 620))
-TRACK_TIMEOUT = 2.0
-STATUS_INTERVAL = 1.0
-PERSON_CLASS = 0
+from yaki import config
 
-WIDTH = 1280
-HEIGHT = 720
+conf = config.load("camera").get("imx500", {})
+
+MODEL = conf.get("MODEL", "/usr/share/imx500-models/imx500_network_yolo11n_pp.rpk")
+CONFIDENCE_THRESHOLD = conf.get("CONFIDENCE_THRESHOLD", 0.6)
+TRACKING_FLOOR = conf.get("TRACKING_FLOOR", 0.20)
+COUNTING_LINE = conf.get("COUNTING_LINE", ((640, 100), (640, 620)))
+TRACK_TIMEOUT = conf.get("TRACK_TIMEOUT", 2.0)
+STATUS_INTERVAL = conf.get("STATUS_INTERVAL", 1.0)
+PERSON_CLASS = conf.get("PERSON_CLASS", 0)
+
+WIDTH = conf.get("WIDTH", 1280)
+HEIGHT = conf.get("HEIGHT", 720)
 
 LINE_ZONE = sv.LineZone(
     start=sv.Point(x=int(COUNTING_LINE[0][0]), y=int(COUNTING_LINE[0][1])),
     end=sv.Point(x=int(COUNTING_LINE[1][0]), y=int(COUNTING_LINE[1][1])),
-)   
+)
+
 
 box_annotator = sv.BoxAnnotator()
 label_annotator = sv.LabelAnnotator()
@@ -54,7 +60,7 @@ def create_camera(
     preview_options = {
         "main": { "size": (WIDTH, HEIGHT), "format": "RGB888" },
         "controls": {"FrameRate": 16},
-        "buffer_count": 12,
+        "buffer_count": 16,
     }
     camera.configure(camera.create_preview_configuration(**preview_options))
     return imx500, camera
@@ -78,7 +84,7 @@ def find_people(
     for box, score, category in zip(boxes, scores, classes):
         score = float(score)
         if (
-            score <= 0.8
+            score <= 0.5
             or int(category) != PERSON_CLASS
         ):
             continue
@@ -132,13 +138,19 @@ def process(callback) -> None:
 
     imx500.show_network_fw_progress_bar()
 
-    camera.start()
-    frame_rate = 16
+    while not camera.started:
+        try:
+            camera.start()
+        except Exception as e:
+            print(e)
+            time.sleep(2)
+
+    frame_rate = 12
     tracker = ByteTrackTracker(
         lost_track_buffer=round(TRACK_TIMEOUT * 30),
         frame_rate=frame_rate,
         track_activation_threshold=CONFIDENCE_THRESHOLD,
-        minimum_consecutive_frames=4,
+        minimum_consecutive_frames=2,
         high_conf_det_threshold=CONFIDENCE_THRESHOLD,
     )
 
@@ -153,7 +165,7 @@ def process(callback) -> None:
 
         if detections is not None:
             tracked = tracker.update(detections)
-            LINE_ZONE.trigger(tracked)
+            ins, outs = LINE_ZONE.trigger(tracked)
 
             if display_frame:
                 frame = annotate_frame(

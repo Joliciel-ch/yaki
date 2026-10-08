@@ -74,6 +74,8 @@ class CameraRecordsManager(RecordsManager):
                         "timestamp": datetime.now(UTC)
                     })
             self.notwriting.set()
+            return True
+        return False
 
 class ServerRecordsManager(RecordsManager):
 
