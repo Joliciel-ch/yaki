@@ -1,10 +1,12 @@
+from datetime import datetime
+
 import httpx2
 from fastapi import Request, Response
 from nicegui import Client, app, core, ui
 
 from yaki import config, records
-from yaki.ui import chart, gauge, settings
-from yaki.ui.live_view import live_view
+from yaki.ui import Dialog, chart, gauge, settings
+from yaki.ui.settings import camera_setting
 
 ui.add_css('''
 
@@ -15,6 +17,10 @@ ui.add_css('''
 
   font-size: 20px;
   height: 52px;
+}
+.q-dialog__inner {
+    height: 100dvh !important;
+    transform: none !important;
 }
 ''', shared=True)
 
@@ -34,6 +40,8 @@ ui.add_head_html('''
             
         }
     </style>
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="manifest.json" />
 ''', shared=True)
 
     
@@ -41,36 +49,42 @@ def setup() -> None:
 
     config.init()
 
-    app.storage.general["update_region_points"] = 0
-    app.storage.general["config"]["clients"] = {}
+    app.storage.general["region_points"] = {}
 
     @ui.page('/')
     async def index():
 
-        with ui.dialog() as help_dialog, ui.card(align_items="start").classes("w-[500px] rounded-xl gap-2"):
-            with ui.row(align_items="center").classes("w-full gap-1"):
-                ui.icon("help", size="lg", color="black")
-                ui.label("Aide").classes("text-xl text-black/90 font-semibold capitalize")
-                ui.space()
-                ui.button(icon="close", on_click=help_dialog.close, color="black").props("outline round")
-            ui.label("Pour toute question ou déclaration de bug: clem@joliciel.ch")
-            ui.label("Module fréquentation")
+        help_dialog = Dialog()
 
+        with help_dialog.overlay:
+            with ui.card(align_items="start").classes("w-[500px] h-[500px] rounded-xl gap-2"):
+                with ui.row(align_items="center").classes("w-full gap-1"):
+                    ui.icon("help", size="lg", color="black")
+                    ui.label("Aide").classes("text-xl text-black/90 font-semibold capitalize")
+                    ui.space()
+                    ui.button(icon="close", on_click=lambda: help_dialog.close(), color="black").props("outline round")
+                ui.label("Pour toute question ou déclaration de bug: clem@joliciel.ch")
+                ui.label("Module fréquentation")
+
+        settings_dialog = settings.dialog()
         # ui.dark_mode(True)
-        with ui.row(align_items="stretch").classes("w-full h-full"):
-
-
-            settings_dialog = settings.dialog()
-            # card.set_visibility(False)
-
-            await gauge.render()
-
-            await chart.render()
-
+        with ui.column(align_items="stretch").classes("w-full h-full gap-1"):
+            with ui.row(align_items="center").classes("gap-0"):
+                ui.space()
+                ui.label(f"MAHN {datetime.now().strftime("%d/%m/%Y, %H:%M:%S")}").classes("text-xl font-bold")  # noqa: DTZ005
+                ui.space()
+                ui.button(icon='settings').props("round").classes("m-1").on("click", lambda: settings_dialog.open())
+                ui.button(icon='help', on_click=lambda: help_dialog.open()).props("round").classes("m-1")
             
-        with ui.page_sticky(x_offset=18, y_offset=18).classes("gap-2"):
-            ui.button(icon='settings', on_click=settings_dialog.open).props("round").classes("m-1")
-            ui.button(icon='help', on_click=help_dialog.open).props("round").classes("m-1")
+            with ui.row(align_items="stretch").classes("flex-grow w-full"):
+                # card.set_visibility(False)
+
+                with ui.card(align_items="center").tight().classes("flex-2 rounded-xl ok_bg transition duration-1000").mark('gauge_card'):
+                    await gauge.render()
+
+                with ui.card(align_items="center").tight().classes("rounded-xl flex-3 bg-gradient-to-b from-[#bcf4fe] to-[#ffffff]"):
+                    await chart.render()
+
 
 
     @app.post('/record/{name}')
@@ -81,25 +95,44 @@ def setup() -> None:
         # ui.notify(f"{name}: {data}")
     
     @app.post('/hello')
-    def hello(data: dict, request: Request):
+    def hello(data: dict):
         
         if "clients" not in app.storage.general["config"]:
             app.storage.general["config"]["clients"] = {}
         app.storage.general["config"]["clients"].update(
-            { f"{request.client.host}": dict(data) }
+            { f"{data.get('host')}": dict(data) }
         )
         return {"hello there"}
         # ui.notify(f"{name}: {data}")
         
     @app.get("/generate_204")
-    def gen204():
+    def gen204(request: Request):
         return Response(b'', 204)
     
-    @ui.page('/live')
-    def live():
-        for ip, data in app.storage.general["config"]["clients"].items():
+    @app.get("/manifest.json")
+    def manifest(request: Request):
+        content = '''
+{
+  "short_name": "Yaki",
+  "name": "Yaki People Counter",
+    "start_url": "/",
+    "scope": "/",
+    "id": "/",
+  "display": "fullscreen",
+  "theme_color": "black",
+  "background_color": "white"
+}'''
+        return Response(content.encode("utf-8"), media_type="application/manifest+json")
+    
+    @ui.page('/cameras')
+    def cameras():
+        with ui.row():
+            ui.space()
+            ui.button("back", on_click=lambda: ui.navigate.to("/")).props("round")
+
+        for ip, client_data in app.storage.general["config"]["clients"].items():
             
-            live_view(data)
+            camera_setting(client_data)
 
             # def infos():
             #     app.storage.general["detect_results"] = str(httpx2.get(f'http://{host}/results').json())
@@ -134,7 +167,7 @@ def main():
     # All the setup is only done when the server starts. This avoids the webcam being accessed
     # by the auto-reload main process (see https://github.com/zauberzeug/nicegui/discussions/2321).
     
-    ui.run(title="Yaki Server", host="0.0.0.0", port=8080, workers=1, dark=False, reload=False)
+    ui.run(title="Yaki Server", host="0.0.0.0", port=8080, dark=False, reload=False, show=False)
 
 # from multiprocessing import get_context
 # import time

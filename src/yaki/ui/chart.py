@@ -133,52 +133,52 @@ async def update_chart(chart):
     chart.run_chart_method("hideLoading")
 
 async def render():
-    with ui.card(align_items="center").tight().classes("rounded-xl flex-2 h-full bg-gradient-to-b from-[#bcf4fe] to-[#ffffff]"):
-        async def update_chart_range(range = None):
-            range = range or app.storage.client["chart_selected_zoom"]
-            now = datetime.now(UTC)
-            max = now + timedelta(minutes=1)
-            # enable_chart_breaks(False)
-            if range == "y":
-                min = now - timedelta(days=365)
-            elif range == "m":
-                min = now - timedelta(days=31)
-                # enable_chart_breaks(True)
-            elif range == "w":
-                min = now - timedelta(weeks=1)
-                # enable_chart_breaks(True)
-            elif range == "d":
-                opening = datetime.strptime(
-                                app.storage.general["config"].get("opening_time", "10:00"), "%H:%M").replace(tzinfo=UTC).time()
-                min = now.replace(hour=opening.hour, minute=opening.minute)
-            elif range == "h":
-                min = now - timedelta(hours=1)
+    
+    async def update_chart_range(range = None):
+        range = range or app.storage.client["chart_selected_zoom"]
+        now = datetime.now(UTC)
+        max = now + timedelta(minutes=1)
+        # enable_chart_breaks(False)
+        if range == "y":
+            min = now - timedelta(days=365)
+        elif range == "m":
+            min = now - timedelta(days=31)
+            # enable_chart_breaks(True)
+        elif range == "w":
+            min = now - timedelta(weeks=1)
+            # enable_chart_breaks(True)
+        elif range == "d":
+            opening = datetime.strptime(
+                            app.storage.general["config"].get("opening_time", "10:00"), "%H:%M").replace(tzinfo=UTC).time()
+            min = now.replace(hour=opening.hour, minute=opening.minute)
+        elif range == "h":
+            min = now - timedelta(hours=1)
 
-            chart.options["dataZoom"][0]["startValue"] = min
-            chart.options["dataZoom"][0]["endValue"] = max
-            
-            # chart.options["xAxis"]["min"] = min
-            # chart.options["xAxis"]["max"] = max
-            chart.update()
-
-        with ui.row(align_items="center").classes("gap-1 w-full bg-gradient-to-b from-black/40 to-transparent p-2 pb-6 -mb-1"):
-            # ui.space()
-            # with ui.row(wrap=False).classes("items-center"):
-            # with ui.element("div"):
-            ui.icon("bar_chart", size="lg", color="white")
-            ui.label("Historique").classes("text-xl text-white/90 font-semibold capitalize")
-            ui.space()
-            ui.toggle({"w": "Semaine", "d": "Aujourd'hui", "h": "Dernière heures"}, 
-                    value = "h").props("unelevated rounded size='md'").classes("bg-black/40 text-white ").on("click", update_chart_range).bind_value(app.storage.client, "chart_selected_zoom")
+        chart.options["dataZoom"][0]["startValue"] = min
+        chart.options["dataZoom"][0]["endValue"] = max
         
-            ui.space()
-            ui.button(icon="refresh", on_click=lambda: update_chart(chart), color="white").props("flat round dense")
-            ui.button(icon="get_app", on_click=lambda: update_chart(chart), color="white").props("flat round dense")
+        # chart.options["xAxis"]["min"] = min
+        # chart.options["xAxis"]["max"] = max
+        chart.update()
 
-        chart = ui.echart(chart_options).classes("p-2 w-full min-h-[300px]")
-        app.storage.client["chart_selected_zoom"] = "h"
+    with ui.row(align_items="center").classes("gap-1 w-full bg-gradient-to-b from-black/40 to-transparent p-2 pb-6 -mb-1"):
+        # ui.space()
+        # with ui.row(wrap=False).classes("items-center"):
+        # with ui.element("div"):
+        ui.icon("bar_chart", size="lg", color="white")
+        ui.label("Historique").classes("text-xl text-white/90 font-semibold capitalize")
+        ui.space()
+        ui.toggle({"w": "Semaine", "d": "Aujourd'hui", "h": "Dernière heures"}, 
+                value = "h").props("unelevated rounded size='md'").classes("bg-black/40 text-white ").on("click", update_chart_range).bind_value(app.storage.client, "chart_selected_zoom")
+    
+        ui.space()
+        ui.button(icon="refresh", on_click=lambda: update_chart(chart), color="white").props("flat round dense")
+        ui.button(icon="get_app", on_click=lambda: update_chart(chart), color="white").props("flat round dense")
+
+    chart = ui.echart(chart_options).classes("p-2 w-full min-h-[550px]")
+    app.storage.client["chart_selected_zoom"] = "h"
 
     await update_chart(chart)
-    # live_chart = ui.timer(5, update_chart, active=False)
+    #live_chart = ui.timer(5, lambda: update_chart(chart), active=True)
     await update_chart_range()
 

@@ -5,15 +5,17 @@ import threading
 import time
 
 import httpx2
+import numpy as np
 import orjson
 from orjsonl import orjsonl
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
-from ultralytics import YOLO, solutions
-from ultralytics.solutions.solutions import SolutionResults
+import supervision as sv
 import uvicorn
+
+from yaki import imx500_crossing
 
 from yaki import config
 from yaki import records
@@ -24,12 +26,11 @@ json_file = Path("records.jsonl")
 
 missing_jpg = Path(__file__).parent.parent / "missing.jpg"
 
-img = missing_jpg.read_bytes()
-
 server = httpx2.Client(
     base_url=f"http://{conf.get('server_host')}:{conf.get('server_port')}"
 )
 
+img = missing_jpg.read_bytes()
 
 def send_last_record():
     while True:
@@ -46,37 +47,14 @@ def send_last_record():
         time.sleep(1)
 
 def process():
-    global img
     if conf.get("camera") == "laptop":
-        import cv2
 
-        vcap = cv2.VideoCapture(0)
-        #video_capture = cv2.VideoCapture("testok.mp4")
-        width  = vcap.get(cv2.CAP_PROP_FRAME_WIDTH)   # float `width`
-        height = vcap.get(cv2.CAP_PROP_FRAME_HEIGHT)  # float `height`
+        def callback(ins, outs, _img):
+            global img
+            img = _img
+            records.cam.create_record(ins, outs)
 
-        region_points = [(0, 0), (width, 0), (width, height), (0, height)]
-        counter = solutions.RegionCounter(
-                    # show=False, 
-                    region=region_points, 
-                    model="yolo11n.pt",
-                    classes=[0],
-                    
-                    verbose=False,
-                )
-        
-        while vcap.isOpened():
-            success, frame = vcap.read()
-
-            if not success:
-                print("Video frame is empty or processing is complete.")
-                break
-
-            result = counter.process(frame)
-            # counter.forget_tracks()
-            records.cam.create_record(result)
-            _, imencode_image = cv2.imencode('.jpg', frame)
-            img = imencode_image.tobytes()
+        imx500_crossing.process(callback)
 
 async def get_frame(request: Request):
     if img:
@@ -85,23 +63,35 @@ async def get_frame(request: Request):
         return Response( missing_jpg.read_bytes(), 
                         media_type="image/jpeg")
 
+async def get_display(request: Request):
+    imx500_crossing.display_frame = not imx500_crossing.display_frame
+    return JSONResponse("ok")
+
 async def get_results(request: Request):
     payload = "no results"
-    if last_result:
-        payload = {
-            "ins": last_result.in_count,
-            "outs": last_result.out_count,
-        }
+    # if last_result:
+    #     payload = {
+    #         "ins": last_result.in_count,
+    #         "outs": last_result.out_count,
+    #     }
     return JSONResponse(payload)
 
 async def get_region(request: Request):
     args = request.scope["query_string"].decode().split("&")
+    v = imx500_crossing.LINE_ZONE.vector
     if len(args) == 4:
         args = list(map(int, args))
-        counter.region = [(args[0], args[1]), (args[2], args[3])]
-        counter.region_initialized = False
-        return JSONResponse("ok")
-    return JSONResponse("nobody")
+        v.start.x = args[0]
+        v.start.y = args[1]
+        v.end.x = args[2]
+        v.end.y = args[3]
+        return JSONResponse("updated successfully")
+    return JSONResponse([
+        v.start.x,
+        v.start.y,
+        v.end.x,
+        v.end.y
+    ])
 
 def say_hello():
     headers = {"Content-type": "application/json",
@@ -117,6 +107,7 @@ def say_hello():
             time.sleep(2)
 
 app = Starlette(routes=[
+    Route("/display", get_display),
     Route("/frame", get_frame),
     Route("/results", get_results),
     Route("/region", get_region),
@@ -124,10 +115,11 @@ app = Starlette(routes=[
 
 
 def main(reload=False):
-    say_hello()
+    threading.Thread(target=say_hello, daemon=True).start()
     threading.Thread(target=process, daemon=True).start()
-    threading.Thread(target=send_last_record, daemon=True).start()
+    # threading.Thread(target=send_last_record, daemon=True).start()
     uvicorn.run(app, host=conf.get("host", "0.0.0.0"), port=conf.get("port", 8081), reload=reload, access_log=False)
 
 if __name__ == "__main__":
     main(True)
+

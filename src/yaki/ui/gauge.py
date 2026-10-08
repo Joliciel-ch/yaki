@@ -3,13 +3,13 @@ import asyncio
 from pathlib import Path
 
 import orjson
-from nicegui import app, ui
+from nicegui import ElementFilter, app, ui
 
 from yaki import records
 
 gauge_options = orjson.loads((Path(__file__).parent / "default_gauge.json").read_bytes())
 
-def update_gauge(gauge, record = None, card=None):
+def update_gauge(gauge, record = None):
 
     conf = app.storage.general.get("config", {})
 
@@ -39,23 +39,23 @@ def update_gauge(gauge, record = None, card=None):
 
     gauge.options["graphic"][1]["style"]["stroke"] = value_color
     gauge.options["series"][0]["detail"]["rich"]["v"]["color"] = font_color
+    gauge.options["series"][0]["detail"]["rich"]["v"]["fontSize"] = 130
 
     gauge_colors = [
         [ min, "#9D9D9D" ],
         [ caution, "#82FF8C" ],
-        [ alert, "#232008" ],
+        [ alert, "#FFF081" ],
         [ 1, "#FF7575" ]
     ]
 
     gauge.options["series"][0]["axisLine"]["lineStyle"]["color"] = gauge_colors
     gauge.options["series"][0]["data"][0]["value"] = value
 
-    if card:
-        card.classes(remove="ok_bg warning_bg alert_bg")
-        card.classes(add=f"{bg_style}_bg")
+    ElementFilter(marker="gauge_card").classes(remove="ok_bg warning_bg alert_bg")
+    ElementFilter(marker="gauge_card").classes(add=f"{bg_style}_bg")
 
-    gauge.options["graphic"][0]["shape"]["r"] = 190 # outer circle radius
-    gauge.options["graphic"][1]["shape"]["r"] = 100 # inner circle radius
+    gauge.options["graphic"][0]["shape"]["r"] = 225 # outer circle radius
+    gauge.options["graphic"][1]["shape"]["r"] = 130 # inner circle radius
 
     gauge.update()
 
@@ -66,65 +66,66 @@ def live_update_gauge(gauge):
 async def render():
     conf = app.storage.general.get("config", {})
 
-    with ui.card(align_items="center").tight().classes("flex-1 rounded-xl ok_bg transition duration-1000") as gauge_card:
-        with ui.row(align_items="center").classes("gap-1 w-full bg-gradient-to-b from-black/40 to-transparent p-2 pb-6 -mb-3"):
-            # ui.space()
-            # with ui.row(wrap=False).classes("items-center"):
-            # with ui.element("div"):
-            ui.icon("speed", size="lg", color="white")
-            ui.label("Fréquentation").classes("text-xl text-white/90 font-semibold capitalize")
-            ui.space()
+    with ui.row(align_items="center").classes("gap-1 w-full bg-gradient-to-b from-black/40 to-transparent p-2 pb-6 -mb-3"):
+        # ui.space()
+        # with ui.row(wrap=False).classes("items-center"):
+        # with ui.element("div"):
+        ui.icon("speed", size="lg", color="white")
+        ui.label("Fréquentation").classes("text-xl text-white/90 font-semibold capitalize")
+        ui.space()
 
-        with ui.row().classes("gap-0 w-full"):
-            gauge = ui.echart(gauge_options, renderer="canvas").classes("w-full min-h-[400px] -mb-[6em]")
-            
-            repeat_tasks = {}
+    with ui.row(align_items="start").classes("gap-0 w-full h-full"):
+        gauge = ui.echart(gauge_options, renderer="canvas").classes("w-full min-h-[500px] -mb-[13em]")
+        
+        repeat_tasks = {}
 
-            async def change_correction(button_name, amount):
-                # conf = app.storage.general.get("config", {})
+        async def change_correction(button_name, amount):
+            # conf = app.storage.general.get("config", {})
+            conf["correction"] = conf.get("correction", 0) + amount
+            records.server.create_record()
+            update_gauge(gauge)
+            await asyncio.sleep(1)
+            while button_name in repeat_tasks:
                 conf["correction"] = conf.get("correction", 0) + amount
                 records.server.create_record()
                 update_gauge(gauge)
-                await asyncio.sleep(1)
-                while button_name in repeat_tasks:
-                    conf["correction"] = conf.get("correction", 0) + amount
-                    records.server.create_record()
-                    update_gauge(gauge)
-                    await asyncio.sleep(0.2)
+                await asyncio.sleep(0.2)
 
-            def start_repeat(button_name, amount):
-                if button_name not in repeat_tasks:
-                    repeat_tasks[button_name] = asyncio.create_task(
-                        change_correction(button_name, amount)
-                    )
+        def start_repeat(button_name, amount):
+            if button_name not in repeat_tasks:
+                repeat_tasks[button_name] = asyncio.create_task(
+                    change_correction(button_name, amount)
+                )
+        def stop_repeat(button_name):
+            task = repeat_tasks.pop(button_name, None)
+            if task:
+                task.cancel()
 
-            def stop_repeat(button_name):
-                task = repeat_tasks.pop(button_name, None)
-                if task:
-                    task.cancel()
-
-            with ui.column(align_items="center").classes("w-full h-[90px]"):
-                ui.label("Correction").classes("z-10 text-black text-bold rounded-full")
-                with ui.row(wrap=False, align_items="start").classes("z-10  w-[210px] gap-0 -m-12"):
-                    ui.button("-1", color="black").props("outline round dense size='xl'") \
-                            .on("mousedown", lambda: start_repeat("down", -1)) \
-                            .on("mouseup", lambda: stop_repeat("down")) \
-                            .on("mouseleave", lambda: stop_repeat("down")) \
-                            .on("touchstart", lambda: start_repeat("down", -1)) \
-                            .on("touchend", lambda: stop_repeat("down")) \
+        with ui.column(align_items="center").classes("w-[320px] h-[100px] bg-white ml-auto mr-auto rounded-full p-2"):
+            
+            with ui.row(wrap=False, align_items="center").classes("z-10 h-full w-full gap-0"):
+                ui.button("-1", color="white").props("outline round dense size='35px'") \
+                        .on("mousedown", lambda: start_repeat("down", -1)) \
+                        .on("mouseup", lambda: stop_repeat("down")) \
+                        .on("mouseleave", lambda: stop_repeat("down")) \
+                        #.on("touchstart", lambda: start_repeat("down", -1)) \
+                        #.on("touchend", lambda: stop_repeat("down")) \
                         
-                    
+                with ui.column(align_items="center").classes("flex-grow gap-0"):
+                    ui.space()
+                    ui.label("Correction").classes("text-black text-bold")
                     ui.label("0").bind_text_from(conf, "correction", backward=lambda v: f"+{v}" if v > 0 else f"{v}"
-                                            ).classes("text-3xl font-bold flex-1 text-center pt-9")
-                    
-                    ui.button("+1", color="white").props("outline round dense size='xl'") \
-                            .on("mousedown", lambda: start_repeat("up", 1)) \
-                            .on("mouseup", lambda: stop_repeat("up")) \
-                            .on("mouseleave", lambda: stop_repeat("up"))\
-                            .on("touchstart", lambda: start_repeat("up", 1)) \
-                            .on("touchend", lambda: stop_repeat("up"))
+                                            ).classes("text-5xl font-bold text-center -pt-3")
+                    ui.space()
+                
+                ui.button("+1", color="white").props("outline round dense size='35px'") \
+                        .on("mousedown", lambda: start_repeat("up", 1)) \
+                        .on("mouseup", lambda: stop_repeat("up")) \
+                        .on("mouseleave", lambda: stop_repeat("up"))\
+                        #.on("touchstart", lambda: start_repeat("up", 1)) \
+                        #.on("touchend", lambda: stop_repeat("up"))
 
-                ui.space()
+            ui.space()
 
             def nicernumber(number: ui.number):
                 with ui.row(align_items="center").classes("w-full gap-0 p-0 m-0") as r:

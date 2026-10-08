@@ -36,9 +36,27 @@ WIFI_NET="10.42.0.0/24"
 if apt-get update; then
     echo "Installing required packages..."
     export DEBIAN_FRONTEND=noninteractive
-    apt-get install -y network-manager dnsmasq
+    apt-get install -y network-manager dnsmasq imx500-all rpicam-apps
 else
     echo "Warning: no network connection; skipping package installation."
+fi
+
+
+if [[ ! -f "/usr/share/imx500-models/imx500_network_yolo11n_pp.rpk" ]]; then
+    echo "Downloading Yolo11n_pp imx500 rpk"
+    curl -L -o /usr/share/imx500-models/imx500_network_yolo11n_pp.rpk https://github.com/raspberrypi/imx500-models/raw/refs/heads/main/imx500_network_yolo11n_pp.rpk
+fi
+
+
+if [[ ! -f "/home/$user/.local/bin/uv" ]]; then
+    echo "Setting Up uv..."
+    runuser -u $user -- bash -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
+fi
+
+
+if [[ ! -d "$SCRIPT_DIR/.venv" ]]; then
+    echo "Setting Up venv..."
+    runuser -u $user -- bash -c 'uv venv --system-site-packages -p 3.13'
 fi
 
 echo "Enabling NetworkManager..."
@@ -131,25 +149,19 @@ systemctl enable dnsmasq
 systemctl restart dnsmasq
 
 
-
-echo "setting up uv"
-
-runuser -u $user -- bash -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
-
 echo "setting up yaki service"
 
-
-cat > /etc/systemd/system/yaki-detect.service <<EOF
+cat > /etc/systemd/system/yaki-camera.service <<EOF
 [Unit]
-Description=yaki detect service
+Description=yaki camera service
 After=NetworkManager.service network-online.target
 Wants=network-online.target
 
 [Service]
-Type=forking
+Type=simple
 User=$user
 Group=$user
-ExecStart=/home/$user/.local/bin/uv run --directory $SCRIPT_DIR src/detect.py
+ExecStart=/home/$user/.local/bin/uv run --directory $SCRIPT_DIR yaki-camera
 StandardOutput=syslog
 StandardError=syslog
 Restart=on-failure
@@ -158,9 +170,9 @@ Restart=on-failure
 WantedBy=multi-user.target
 EOF
 
-cat > /etc/systemd/system/yaki-main.service <<EOF
+cat > /etc/systemd/system/yaki-server.service <<EOF
 [Unit]
-Description=yaki main service
+Description=yaki server service
 After=NetworkManager.service network-online.target
 Wants=network-online.target
 
@@ -168,7 +180,7 @@ Wants=network-online.target
 Type=simple
 User=$user
 Group=$user
-ExecStart=/home/$user/.local/bin/uv run --directory $SCRIPT_DIR src/main.py
+ExecStart=/home/$user/.local/bin/uv run --directory $SCRIPT_DIR yaki-server
 StandardOutput=syslog
 StandardError=syslog
 Restart=on-failure
@@ -179,13 +191,12 @@ EOF
 
 systemctl daemon-reload
 
-systemctl stop yaki-main
-systemctl stop yaki-detect
-systemctl enable yaki-main
-systemctl disable yaki-detect
-systemctl stop yaki-main
-systemctl start yaki-main
-# systemctl start yaki-detect
+systemctl stop yaki-server
+systemctl stop yaki-camera
+systemctl enable yaki-server
+systemctl enable yaki-camera
+systemctl start yaki-server
+systemctl start yaki-camera
 
 echo
 echo "Setup complete."

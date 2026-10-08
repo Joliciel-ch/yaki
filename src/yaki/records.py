@@ -14,10 +14,6 @@ server_records = Path(__file__).parent.parent.parent / "server_records.jsonl"
 
 server_records.touch(exist_ok=True)
 
-@dataclass
-class Result:
-    ins: int = 0
-    outs: int = 0
 
 class RecordsManager:
     def __init__(self, record_file):
