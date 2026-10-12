@@ -172,8 +172,8 @@ async def render():
                 value = "h").props("unelevated rounded size='md'").classes("bg-black/40 text-white ").on("click", update_chart_range).bind_value(app.storage.client, "chart_selected_zoom")
     
         ui.space()
-        ui.button(icon="refresh", on_click=lambda: update_chart(chart), color="white").props("flat round dense")
-        ui.button(icon="get_app", on_click=lambda: update_chart(chart), color="white").props("flat round dense")
+        ui.button(icon="refresh", on_click=lambda: update_chart(chart), color="white").props("flat round")
+        #ui.button(icon="get_app", on_click=lambda: update_chart(chart), color="white").props("flat round dense")
 
     chart = ui.echart(chart_options).classes("p-2 w-full min-h-[550px]")
     app.storage.client["chart_selected_zoom"] = "h"

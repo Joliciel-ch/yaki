@@ -1,10 +1,12 @@
+from collections import deque
+import time
 from datetime import datetime
 
 import httpx2
 from fastapi import Request, Response
-from nicegui import Client, app, core, ui
+from nicegui import Client, app, core, logging, ui
 
-from yaki import config, records
+from yaki import config, notify_content, records
 from yaki.ui import Dialog, chart, gauge, settings
 from yaki.ui.settings import camera_setting, display_logs
 
@@ -44,6 +46,7 @@ ui.add_head_html('''
     <link rel="manifest" href="manifest.json" />
 ''', shared=True)
 
+notifications = deque()
     
 def setup() -> None:
 
@@ -51,8 +54,21 @@ def setup() -> None:
 
     app.storage.general["region_points"] = {}
 
+    app.storage.general["config"]["visitors"] = 0
+    app.storage.general["config"]["correction"] = 0
+
+    app.storage.general["notify"] = None
+
+    records.server.create_record()
+
     @ui.page('/')
     async def index():
+
+        def refresh():
+            while notifications:
+                ui.notify(notifications.popleft(), type="info").props("timeout=10 html='True'")
+
+        ui.timer(1, refresh)
 
         help_dialog = Dialog()
 
@@ -64,7 +80,7 @@ def setup() -> None:
                     ui.space()
                     ui.button(icon="close", on_click=lambda: help_dialog.close(), color="black").props("outline round")
                 ui.label("Pour toute question ou déclaration de bug: clem@joliciel.ch")
-                ui.label("Module fréquentation")
+                
 
         settings_dialog = settings.dialog()
         # ui.dark_mode(True)
@@ -85,27 +101,27 @@ def setup() -> None:
                 with ui.card(align_items="center").tight().classes("rounded-xl flex-3 bg-gradient-to-b from-[#bcf4fe] to-[#ffffff]"):
                     await chart.render()
 
-
-
     @app.post('/record/{name}')
     def record(name: str, data: dict):
         # print(f"recevied data from {name}", data)
-        app.storage.general["config"]["visitors"] = data.get("count", 0)
+        diff = int(app.storage.general["config"]["visitors"]) - int(data.get("count", 0))
+        app.storage.general["config"]["visitors"] = int(data.get("count", 0))
+        notifications.append(f"<h1>{diff} person(s) entered!</h1>")
         records.server.create_record(data, name)
-        # ui.notify(f"{name}: {data}")
-    
+        return Response("thanks!")
+
     @app.post('/hello')
     def hello(data: dict):
-        
         if "clients" not in app.storage.general["config"]:
             app.storage.general["config"]["clients"] = {}
         
         app.storage.general["config"]["clients"].update(
             { f"{data.get('name')}": dict(data) }
         )
+        notifications.append(f"<h1>{data.get('name')} said hello! {time.time()}</h1>")
+
         config.save()
-        return {"Hello there"}
-        # ui.notify(f"{name}: {data}")
+        return Response("hello There !")
         
     @app.get("/generate_204")
     def gen204(request: Request):

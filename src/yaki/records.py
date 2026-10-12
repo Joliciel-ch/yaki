@@ -2,6 +2,7 @@
 from datetime import datetime, UTC
 from pathlib import Path
 import random
+import shutil
 import threading
 import time
 
@@ -16,7 +17,10 @@ server_records.touch(exist_ok=True)
 
 
 class RecordsManager:
-    def __init__(self, record_file):
+    def __init__(self, record_file: Path):
+        if record_file.exists():
+            bak = record_file.with_name(record_file.name + f".{time.time()}.bak")
+            shutil.copy2(record_file, bak)
         record_file.touch(exist_ok=True)
         self.file = record_file
         self.notwriting = threading.Event()
@@ -33,14 +37,6 @@ class RecordsManager:
             return {}
 
     def get_all_records(self) -> list[dict]:
-        self.notwriting.wait(1)
-        return orjsonl.load(self.file) or []
-
-    def get_7days_records(self) -> list[dict]:
-        self.notwriting.wait(1)
-        return orjsonl.load(self.file) or []
-
-    def get_all_day_records(self) -> list[dict]:
         self.notwriting.wait(1)
         return orjsonl.load(self.file) or []
 

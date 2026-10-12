@@ -97,28 +97,17 @@ def dialog():
                     ui.number("Manual Correction", min=-200, max=200, value=0, precision=0).bind_value(
                         app.storage.general, ("config", "correction"), forward=lambda x: int(x))
 
-                    ui.button("Live View", on_click=lambda: ui.navigate.to("/cameras"))
-                    ui.button("Logs", on_click=lambda: ui.navigate.to("/logs"))
-                    ui.button("Update", on_click=lambda: records.server.create_record())
+                    with ui.row():
 
-                    ui.button('rootCA', on_click=lambda: ui.download.file('/home/borel/yaki/root.crt'))
-                    ui.button("Reboot", color="red", on_click=lambda: subprocess.run(
-                                                                        ["sudo", "/usr/bin/systemctl", "reboot"],
-                                                                        check=True,
-                                                                    ))
-        # with ui.grid(columns=2).classes("text-white"):
-        #     # ui.label("Settings").classes("text-xl")
-        #     # ui.space()
-        #     # ui.label("Current Count override")
-        #     # ui.slider(min=0, max=200, value=100).bind_value(app.storage.general, ("config", "current_count"))
-        #     ui.number("Visitors", min=0, max=1000, value=0).props("size='xl'").bind_value(app.storage.general, ("config", "visitors"))
-        #     ui.number("Manual Correction", min=-200, max=200, value=0).props("size='xl'").bind_value(app.storage.general, ("config", "correction"))
-        #     ui.number("Staff", min=0, max=5000, value=20).props("size='xl'").bind_value(app.storage.general, ("config", "staff"))
-        #     ui.number("Caution thresold %", min=0, max=100, value=85).props("size='xl'").bind_value(app.storage.general, ("config", "caution_%"))
-        #     ui.number("Alert thresold %", min=0, max=100, value=95).props("size='xl'").bind_value(app.storage.general, ("config", "alert_%"))
-        #     ui.time_input("opening hour").props("size='xl'").bind_value(app.storage.general, ("config", "opening_time")).picker.props("format24h")
-        #     ui.time_input("closing hour").props("size='xl'").bind_value(app.storage.general, ("config", "closing_time")).picker.props("format24h")
+                        ui.button("Live View", on_click=lambda: ui.navigate.to("/cameras"))
+                        ui.button("Logs", on_click=lambda: ui.navigate.to("/logs"))
+                        ui.button("Update", on_click=lambda: records.server.create_record())
 
+                        ui.button('rootCA', on_click=lambda: ui.download.file('/home/borel/yaki/root.crt'))
+                        ui.button("Reboot", color="red", on_click=lambda: subprocess.run(
+                                                                            ["sudo", "/usr/bin/systemctl", "reboot"],
+                                                                            check=True,
+                                                                            ))
             
     return dialog
 
@@ -145,41 +134,80 @@ def camera_setting(data):
 
     with ui.card().classes("w-full"):
         with ui.row().classes("w-full"):
-            ui.label(f"Camera {data.get("name")} [{data.get("camera")}]").classes("text-xl")
+            ui.label(f"Camera {data.get("name")} [{data.get("type")}]").classes("text-xl")
             ui.space()
-            ui.label(f"points {store}")
+            ui.button("restart", on_click=lambda: httpx2.get(f'{host}/restart'))
 
         # with ui.row(align_items="center"):
 
         #     ui.label().bind_text_from(app.storage.general, "detect_results")
-        def on_change():
-            httpx2.get(f'{host}/display')
+        def process_frame(enable="False"):
+            httpx2.get(f'{host}/display?{enable}')
 
-        ui.switch("show live view", on_change=on_change)
+        def get_results():
+            return httpx2.get(f'{host}/records').json()
 
-        video_image = ui.interactive_image(f'{host}/frame', on_mouse=mouse_handler, events=['mousedown']) #.classes('max-w-[1280px]')
+        #ui.switch("show live view", on_change=on_change)
 
-        with ui.expansion("data"):
+        with ui.expansion("live stream", on_value_change=lambda e: process_frame(e.value)).classes("w-full"):
+            video_image = ui.interactive_image(f'{host}/frame', on_mouse=mouse_handler, events=['mousedown']) #.classes('max-w-[1280px]')
+            cam_conf = config.load("camera").get("imx500")
+
+            def _save():
+                config.save("camera", {"imx500": cam_conf})
+                httpx2.get(f"{host}/restart")
+
+            ui.checkbox("invert in and outs").bind_value(cam_conf, "invert_ins_outs")
+            ui.label("detect floor")
+            ui.slider(min=0, max=1, step=0.05).props("label-always label").classes("w-full").bind_value(cam_conf, "detect_floor")
+            ui.label("tracking timeout")
+            ui.slider(min=0, max=20, step=1).props("label-always label").classes("w-full").bind_value(cam_conf, "track_timeout")
+            ui.label("tracking threshold")
+            ui.slider(min=0, max=1, step=0.05).props("label-always label").classes("w-full").bind_value(cam_conf, "track_threshold")
+            ui.label("confidence threshold")
+            ui.slider(min=0, max=1, step=0.05).props("label-always label").classes("w-full").bind_value(cam_conf, "confidence_threshold")
+            ui.label("track consecutives frames")
+            ui.slider(min=0, max=20, step=1).props("label-always label").classes("w-full").bind_value(cam_conf, "min_consecutive_frames")
+            ui.button("update", on_click=_save)
+
+            
+        with ui.expansion("data").classes("w-full"):
             ui.json_editor({"content": {'json': data}})
 
+        with ui.expansion("detections").classes("w-full"):
+            def refresh():
+                
+                log.clear()
+                log.push(str(get_results()))
+                for r in get_results():
+                    log.push(str(r))
+            ui.button("refresh", on_click=refresh)
+            log = ui.log(20)
+            log.push("click on refresh..")
+
         ui.timer(interval=0.1, callback=video_image.force_reload)
+
+
 
 def display_logs():
     ui.label("camera service")
     cam_service = ui.log(max_lines=20).classes('w-full')
-    proc = subprocess.Popen(["journalctl", "-u", "yaki-camera"], stdout=subprocess.PIPE)
+
+    base_cmd = ["journalctl", "-r",  "-n", "100", "--no-pager", "-u" ]
+
+    proc = subprocess.Popen(base_cmd + [ "yaki-camera" ], stdout=subprocess.PIPE)
     for line in io.TextIOWrapper(proc.stdout, encoding="utf-8"):  # or another encoding
         cam_service.push(line)
 
     ui.label("server service")
     server_service = ui.log(max_lines=20).classes('w-full')
-    proc = subprocess.Popen(["journalctl", "-u", "yaki-server"], stdout=subprocess.PIPE)
+    proc = subprocess.Popen(base_cmd +  [ "yaki-server"], stdout=subprocess.PIPE)
     for line in io.TextIOWrapper(proc.stdout, encoding="utf-8"):  # or another encoding
         server_service.push(line)
 
     ui.label("hotspot service")
     ap_service = ui.log(max_lines=20).classes('w-full')
-    proc = subprocess.Popen(["journalctl", "-u", "yaki-hotspot"], stdout=subprocess.PIPE)
+    proc = subprocess.Popen(base_cmd +  [ "yaki-hotspot"], stdout=subprocess.PIPE)
     for line in io.TextIOWrapper(proc.stdout, encoding="utf-8"):  # or another encoding
         ap_service.push(line)
     
