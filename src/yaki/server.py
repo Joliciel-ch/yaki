@@ -68,7 +68,7 @@ def setup() -> None:
             while notifications:
                 ui.notify(notifications.popleft(), type="info").props("timeout=10 html='True'")
 
-        ui.timer(1, refresh)
+        ui.timer(2, refresh)
 
         help_dialog = Dialog()
 
@@ -86,12 +86,18 @@ def setup() -> None:
         # ui.dark_mode(True)
         with ui.column(align_items="stretch").classes("w-full h-full gap-1"):
             with ui.row(align_items="center").classes("gap-0"):
-                ui.space()
-                ui.label(f"MAHN {datetime.now().strftime("%d/%m/%Y, %H:%M:%S")}").classes("text-xl font-bold")  # noqa: DTZ005
-                ui.space()
-                ui.button(icon='settings').props("round").classes("m-1").on("click", lambda: settings_dialog.open())
-                ui.button(icon='help', on_click=lambda: help_dialog.open()).props("round").classes("m-1")
-            
+                @ui.refreshable
+                def display_header():
+                    ui.space()
+                    ui.label(f"MAHN {datetime.now().strftime("%d/%m/%Y, %H:%M:%S")}").classes("text-xl font-bold")  # noqa: DTZ005
+                    ui.space()
+                    ui.button(icon='settings').props("round").classes("m-1").on("click", lambda: settings_dialog.open())
+                    ui.button(icon='help', on_click=lambda: help_dialog.open()).props("round").classes("m-1")
+
+                display_header()
+
+                ui.timer(1, display_header.refresh)
+                
             with ui.row(align_items="stretch").classes("flex-grow w-full"):
                 # card.set_visibility(False)
 
