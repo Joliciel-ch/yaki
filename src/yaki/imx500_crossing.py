@@ -3,8 +3,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import pprint
 import time
+from pathlib import Path
 from typing import Any
 
 import cv2
@@ -23,8 +24,10 @@ MODEL = conf.get("MODEL", "/usr/share/imx500-models/imx500_network_yolo11n_pp.rp
 COUNTING_LINE = conf.get("COUNTING_LINE", ((640, 100), (640, 620)))
 PERSON_CLASS = 0
 
-WIDTH = conf.get("WIDTH", 1280)
-HEIGHT = conf.get("HEIGHT", 720)
+WIDTH = conf.get("WIDTH", 1920)
+HEIGHT = conf.get("HEIGHT", 1080)
+
+CAM_GAIN = conf.get("GAIN", 2.0)
 
 LINE_ZONE = sv.LineZone(
     start=sv.Point(x=int(COUNTING_LINE[0][0]), y=int(COUNTING_LINE[0][1])),
@@ -57,12 +60,21 @@ def create_camera(
 
     intrinsics_fps = intrinsics.inference_rate
     camera = Picamera2(imx500.camera_num)
+
+    pprint.pp(camera.camera_controls)
     preview_options = {
         "main": { "size": (WIDTH, HEIGHT), "format": "RGB888" },
         "controls": {"FrameRate": intrinsics_fps},
         "buffer_count": 12,
     }
     camera.configure(camera.create_preview_configuration(**preview_options))
+
+    for k, v in sorted(camera.camera_controls.items()):
+        print(f"{k}:")
+        print(f"    min={v[0]}")
+        print(f"    max={v[1]}")
+        print(f"    default={v[2]}")
+        
     return imx500, camera
 
 
@@ -137,7 +149,7 @@ def annotate_frame(
 
 
 
-def main_count_loop(callback, invert_ins_outs=False, detect_floor=0.2, track_timeout = 2, track_threshold = 0.5, confidence_threshold = 0.5, min_consecutive_frames = 2) -> None:
+def main_count_loop(callback, detect_floor=0.2, track_timeout = 2, track_threshold = 0.5, confidence_threshold = 0.5, min_consecutive_frames = 2) -> None:
 
     imx500, camera = create_camera()
 
@@ -183,9 +195,6 @@ def main_count_loop(callback, invert_ins_outs=False, detect_floor=0.2, track_tim
             else:
                 frame = None
 
-            if invert_ins_outs:
-                callback(LINE_ZONE.out_count, LINE_ZONE.in_count, frame)
-            else:
-                callback(LINE_ZONE.in_count, LINE_ZONE.out_count, frame)
+            callback(LINE_ZONE.in_count, LINE_ZONE.out_count, frame)
 
     camera.close()

@@ -56,6 +56,7 @@ def process():
                 send_last_record()
 
         imx500_crossing.main_count_loop(callback,
+                                        imx500_conf.get("detect_floor", 0.2),
                                         imx500_conf.get("track_timeout", 2),
                                         imx500_conf.get("track_threshold", 0.5),
                                         imx500_conf.get("confidence_threshold", 0.5),
