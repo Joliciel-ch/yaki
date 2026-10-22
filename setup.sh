@@ -42,7 +42,7 @@ WIFI_NET="10.42.0.0/24"
 if apt-get update; then
     echo "Installing required packages..."
     export DEBIAN_FRONTEND=noninteractive
-    apt-get install -y network-manager dnsmasq imx500-all rpicam-apps
+    apt-get install -y network-manager dnsmasq imx500-all rpicam-apps util-linux-extra iptables python3-libcamera python3-kms++ libcap-dev
 else
     echo "Warning: no network connection; skipping package installation."
 fi
@@ -57,13 +57,17 @@ fi
 if [[ ! -f "/home/$user/.local/bin/uv" ]]; then
     echo "Setting Up uv..."
     runuser -u $user -- bash -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
+    runuser -u $user -- bash -c 'source $HOME/.local/bin/env'
 fi
 
 
 if [[ ! -d "$SCRIPT_DIR/.venv" ]]; then
     echo "Setting Up venv..."
-    runuser -u $user -- bash -c 'uv venv --system-site-packages -p 3.13'
+    runuser -u $user -- bash -c '$HOME/.local/bin/uv venv --system-site-packages -p 3.13'
 fi
+
+echo "sync uv installation..."
+runuser -u $user -- bash -c "/home/$user/.local/bin/uv sync --directory $SCRIPT_DIR"
 
 echo "Enabling NetworkManager..."
 systemctl enable --now NetworkManager
@@ -141,7 +145,7 @@ dhcp-leasefile=/var/lib/misc/dnsmasq.leases
 EOF
 
 echo "setting up iptables"
-iptables-restore $SCRIPT_DIR/hotspot.iptables
+#iptables iptables-persistentiptables-restore $SCRIPT_DIR/hotspot.iptables
 
 echo "Testing dnsmasq configuration..."
 dnsmasq --test
@@ -153,7 +157,7 @@ echo "Enabling dnsmasq..."
 systemctl disable dnsmasq
 systemctl stop dnsmasq
 
-echo "setting up yaki service"
+echo "setting up yaki services"
 
 # ExecStart=nmcli radio wifi on
 # ExecStart=nmcli device wifi hotspot ifname $WIFI_IFACE ssid $AP_SSID password $AP_PASSWORD
@@ -168,6 +172,7 @@ Wants=network-online.target
 Type=oneshot
 ExecStart=nmcli radio wifi on
 ExecStart=nmcli connection up "$AP_CONNECTION"
+ExecStart=hwclock --hctosys
 StandardOutput=syslog
 StandardError=syslog
 
@@ -224,6 +229,12 @@ systemctl enable yaki-camera
 systemctl restart yaki-hotspot
 systemctl restart yaki-server
 systemctl restart yaki-camera
+
+echo "setup rtc stuff"
+
+timedatectl set-ntp off
+timedatectl set-local-rtc 0
+hwclock --hctosys
 
 echo
 echo "Setup complete."

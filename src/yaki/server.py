@@ -66,7 +66,7 @@ def setup() -> None:
 
         def refresh():
             while notifications:
-                ui.notify(notifications.popleft(), type="info").props("timeout=10 html='True'")
+                ui.notify(notifications.popleft(), type="info")
 
         ui.timer(2, refresh)
 

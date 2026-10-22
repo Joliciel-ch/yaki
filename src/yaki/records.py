@@ -6,15 +6,9 @@ import shutil
 import threading
 import time
 
-
 from nicegui import app
 import orjson
 from orjsonl import orjsonl
-
-server_records = Path(__file__).parent.parent.parent / "server_records.jsonl"
-
-server_records.touch(exist_ok=True)
-
 
 class RecordsManager:
     def __init__(self, record_file: Path):
@@ -98,13 +92,22 @@ class ServerRecordsManager(RecordsManager):
         if same:
             print("record NOT created, same data")
         else:
+
+            total = last_record.get("total", 0)
+            if last_record.get("visitors") < g.get("visitors"):
+                total += g.get("visitors") - last_record.get("visitors")
+            if last_record.get("correction") < g.get("correction"):
+                total += g.get("correction") - last_record.get("correction")
             now = datetime.now(UTC)
             orjsonl.append(self.file, {
                         "visitors": g.get("visitors"),
                         "staff": g.get("staff_planning").get(str(now.weekday())),
                         "correction": g.get("correction"),
+                        "total": total,
                         "maximum": g.get("maximum"),
                         "host": host,
+                        "date": now.strftime("%d/%m/%Y"),
+                        "time": now.strftime("%H:%M:%S"),
                         "timestamp": now.timestamp(),
                         "data": data
                     })
@@ -112,9 +115,6 @@ class ServerRecordsManager(RecordsManager):
         self.notwriting.set()
 
 
-cam_file = Path(__file__).parent.parent.parent / "camera_records.jsonl"
-
-cam = CameraRecordsManager(cam_file)
 
 
 server_file = Path(__file__).parent.parent.parent / "server_records.jsonl"

@@ -115,22 +115,32 @@ def dialog():
 def camera_setting(data):
 
     host = f"http://{data.get("hostname", "yaki.local")}:{data.get("port")}"
-
-    if data.get("host") not in app.storage.general["region_points"]:
-        app.storage.general["region_points"][data.get("host")] = {}
-
-    store = app.storage.general["region_points"][data.get("host")] 
     
-    store["current"] = 0
-    store["points"] = httpx2.get(f'{host}/region').json()
+    key = f"cam_config_{data.get("host")}"
+
+    if key not in app.storage.general:
+        app.storage.general[key] = {}
+    
+    app.storage.general[key].update(httpx2.get(f"{host}/config").json())
+    
+    cam_config = app.storage.general[key]
+
+    store = app.storage.client["points_edit"] = {}
+
+    store["i"] = 0
+
+    store["points"] = cam_config.get("imx500.line_pos")
+
+    def push_config(conf = None):
+        nonlocal cam_config
+        conf = conf or cam_config
+        cam_config.update(httpx2.post(f"{host}/config", json=conf).json())
 
     def mouse_handler(e: events.MouseEventArguments):
-        i = store["current"]
-        store["points"][i] = int(e.image_x)
-        store["points"][i+1] = int(e.image_y)
-        store["current"] = 2 if i == 0 else 0
-        p = store["points"]
-        httpx2.get(f'{host}/region?{p[0]}&{p[1]}&{p[2]}&{p[3]}')
+        i = store["i"]
+        store["points"][i] = [int(e.image_x), int(e.image_y)]
+        store["i"] = 1 if i == 0 else 0
+        push_config({ "imx500.line_pos": store["points"] })
 
     with ui.card().classes("w-full"):
         with ui.row().classes("w-full"):
@@ -141,38 +151,61 @@ def camera_setting(data):
         # with ui.row(align_items="center"):
 
         #     ui.label().bind_text_from(app.storage.general, "detect_results")
-        def process_frame(enable="False"):
-            httpx2.get(f'{host}/display?{enable}')
+        def display_frame(e):
+            push_config({ "display_frame": e.value })
 
         def get_results():
             return httpx2.get(f'{host}/records').json()
 
         #ui.switch("show live view", on_change=on_change)
 
-        with ui.expansion("live stream", on_value_change=lambda e: process_frame(e.value)).classes("w-full"):
+        with ui.expansion("Camera Live Settings", on_value_change=display_frame).classes("w-full"):
             video_image = ui.interactive_image(f'{host}/frame', on_mouse=mouse_handler, events=['mousedown']) #.classes('max-w-[1280px]')
-            cam_conf = config.load("camera").get("imx500")
 
-            def _save():
-                config.save("camera", {"imx500": cam_conf})
+            async def save_restart():
+                push_config()
                 httpx2.get(f"{host}/restart")
-
-            ui.checkbox("invert in and outs").bind_value(cam_conf, "invert_ins_outs")
-            ui.label("detect floor")
-            ui.slider(min=0, max=1, step=0.05).props("label-always label").classes("w-full").bind_value(cam_conf, "detect_floor")
-            ui.label("tracking timeout")
-            ui.slider(min=0, max=20, step=1).props("label-always label").classes("w-full").bind_value(cam_conf, "track_timeout")
-            ui.label("tracking threshold")
-            ui.slider(min=0, max=1, step=0.05).props("label-always label").classes("w-full").bind_value(cam_conf, "track_threshold")
-            ui.label("confidence threshold")
-            ui.slider(min=0, max=1, step=0.05).props("label-always label").classes("w-full").bind_value(cam_conf, "confidence_threshold")
-            ui.label("track consecutives frames")
-            ui.slider(min=0, max=20, step=1).props("label-always label").classes("w-full").bind_value(cam_conf, "min_consecutive_frames")
-            ui.button("update", on_click=_save)
+            
+            with ui.expansion("Neural Network Settings").classes("w-full"):
+                ui.checkbox("invert in and outs").bind_value(cam_config, "imx500.invert_ins_outs")
+                ui.label("detect floor")
+                ui.slider(min=0, max=1, step=0.05).props("label-always label").classes("w-full").bind_value(cam_config, "imx500.detect_floor")
+                ui.label("tracking timeout")
+                ui.slider(min=0, max=20, step=1).props("label-always label").classes("w-full").bind_value(cam_config, "imx500.track_timeout")
+                ui.label("tracking threshold")
+                ui.slider(min=0, max=1, step=0.05).props("label-always label").classes("w-full").bind_value(cam_config, "imx500.track_threshold")
+                ui.label("confidence threshold")
+                ui.slider(min=0, max=1, step=0.05).props("label-always label").classes("w-full").bind_value(cam_config, "imx500.confidence_threshold")
+                ui.label("track consecutives frames")
+                ui.slider(min=0, max=20, step=1).props("label-always label").classes("w-full").bind_value(cam_config, "imx500.min_consecutive_frames")
+                ui.button("update", on_click=save_restart)
 
             
+            with ui.expansion("Camera Settings").classes("w-full"):
+                ui.label("Exposure")
+                ui.slider(min=-8, max=8, step=0.05).props("label-always label").classes("w-full"
+                ).bind_value(cam_config, "controls.ExposureValue")
+                ui.label("Gain")
+                ui.slider(min=0, max=22, step=0.05).props("label-always label").classes("w-full"
+                ).bind_value(cam_config, "controls.AnalogueGain")
+                ui.label("Exposure Constraint Mode")
+                ui.slider(min=0, max=2, step=1).props("label-always label").classes("w-full"
+                ).bind_value(cam_config, "controls.AeConstraintMode")
+                ui.label("Brightness")
+                ui.slider(min=-1, max=1, step=0.05).props("label-always label").classes("w-full"
+                ).bind_value(cam_config, "controls.Brightness")
+                ui.label("Contrast")
+                ui.slider(min=0, max=1, step=0.05).props("label-always label").classes("w-full"
+                ).bind_value(cam_config, "controls.Contrast")
+                #ui.checkbox("Stats").bind_value(cam_config, "controls.StatsOutputEnable")
+                
+                #ui.label("Exposure")
+                #ui.slider(min=0, max=22, step=0.05).props("label-always label").classes("w-full").bind_value(cam_config, "controls.ExposureValue")
+
+                ui.button("update", on_click=push_config)
+
         with ui.expansion("data").classes("w-full"):
-            ui.json_editor({"content": {'json': data}})
+            ui.json_editor({"content": {'json': cam_config}})
 
         with ui.expansion("detections").classes("w-full"):
             def refresh():

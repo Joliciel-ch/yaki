@@ -22,7 +22,9 @@ from yaki import records
 
 conf = config.load("camera")
 
-json_file = Path("records.jsonl")
+records_file = Path(__file__).parent.parent.parent / "camera_records.jsonl"
+
+cam_records = records.CameraRecordsManager(records_file)
 
 missing_jpg = Path(__file__).parent.parent / "missing.jpg"
 
@@ -32,11 +34,10 @@ server = httpx2.Client(
 
 img = missing_jpg.read_bytes()
 
-
 def send_last_record():
     headers = {"Content-type": "application/json",
             "Accept": "text/plain"}
-    body = orjson.dumps(records.cam.get_last_record())
+    body = orjson.dumps(cam_records.get_last_record())
     try:
         response = server.post(
             f"/record/{conf.get('name')}", content=body, headers=headers
@@ -47,21 +48,13 @@ def send_last_record():
 def process():
     if conf.get("type") == "imx500":
 
-        imx500_conf = conf.get("imx500", {})
-
         def callback(ins, outs, _img):
             global img
             img = _img
-            if records.cam.create_record(ins, outs):
+            if cam_records.create_record(ins, outs):
                 send_last_record()
 
-        imx500_crossing.main_count_loop(callback,
-                                        imx500_conf.get("detect_floor", 0.2),
-                                        imx500_conf.get("track_timeout", 2),
-                                        imx500_conf.get("track_threshold", 0.5),
-                                        imx500_conf.get("confidence_threshold", 0.5),
-                                        imx500_conf.get("min_consecutive_frames", 2),
-                                    )
+        imx500_crossing.main_count_loop(callback)
 
 async def get_frame(request: Request):
     if img:
@@ -70,7 +63,7 @@ async def get_frame(request: Request):
         return Response(missing_jpg.read_bytes(),
                         media_type="image/jpeg")
 
-async def get_display_frame(request: Request):
+async def toggle_frame_processing(request: Request):
     arg = request.scope["query_string"].decode()
     if arg == "True":
         imx500_crossing.return_frame = True
@@ -78,41 +71,40 @@ async def get_display_frame(request: Request):
         imx500_crossing.return_frame = False
     return JSONResponse("ok")
 
-async def get_records(request: Request):
-    return JSONResponse(records.cam.get_all_records())
+async def all_records(request: Request):
+    return JSONResponse(cam_records.get_all_records())
 
-async def get_region(request: Request):
-    args = request.scope["query_string"].decode().split("&")
-    if len(args) == 4:
-        args = list(map(int, args))
-        imx500_crossing.LINE_ZONE = sv.LineZone(
-            start=sv.Point(x=int(args[0]), y=int(args[1])),
-            end=sv.Point(x=int(args[2]), y=int(args[3])),
-        )
-        conf["imx500"]["COUNTING_LINE"] = [
-            [args[0], args[1]], [args[2], args[3]]
-        ]
+async def cam_config(request: Request):
+    global conf
+    try:
+        new_settings = await request.json()
+    except Exception:
+        new_settings = False
+    
+    if new_settings:
+        conf = conf | new_settings
+        
         config.save("camera", conf)
-        return JSONResponse("updated successfully")
-    return JSONResponse([
-        imx500_crossing.LINE_ZONE.vector.start.x,
-        imx500_crossing.LINE_ZONE.vector.start.y,
-        imx500_crossing.LINE_ZONE.vector.end.x,
-        imx500_crossing.LINE_ZONE.vector.end.y
-    ])
+        
+        if conf.get("type") == "imx500":
+            imx500_crossing.update_config()
+
+    return JSONResponse(conf)
+
+    #if "controls" in settings;
 
 def say_hello():
     headers = {"Content-type": "application/json",
                     "Accept": "text/plain"}
+
     body = orjson.dumps(conf)
     status = None
     while status != 200:
         try:
             response = server.post("/hello", content=body, headers=headers)
             status = response.status_code
-            print(status)
         except Exception as e:
-            print(f"Error while saying hello to {server}", e)
+            print(f"Error: Cannot reach server ({server.base_url})")
             time.sleep(2)
 
 
@@ -129,15 +121,15 @@ def restart_processing(request: Request):
     process_thread.start()
 
 app = Starlette(routes=[
-    Route("/display", get_display_frame),
+    Route("/display", toggle_frame_processing),
     Route("/frame", get_frame),
-    Route("/records", get_records),
-    Route("/region", get_region),
+    Route("/records", all_records),
     Route("/restart", restart_processing),
+    Route("/config", cam_config, methods=["GET", "POST"]),
 ])
 
 def main(reload=False):
-    records.cam.create_record(0, 0)
+    cam_records.create_record(0, 0)
     hello_thread.start()
     process_thread.start()
     # threading.Thread(target=send_last_record, daemon=True).start()

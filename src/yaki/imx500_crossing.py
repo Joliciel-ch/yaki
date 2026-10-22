@@ -12,27 +12,37 @@ import cv2
 import numpy as np
 import supervision as sv
 from picamera2 import Picamera2
+from picamera2.controls import Controls
 from picamera2.devices import IMX500
 from picamera2.devices.imx500 import NetworkIntrinsics
 from trackers import ByteTrackTracker
 
 from yaki import config
 
-conf = config.load("camera").get("imx500", {})
+conf = config.load("camera")
 
-MODEL = conf.get("MODEL", "/usr/share/imx500-models/imx500_network_yolo11n_pp.rpk")
-COUNTING_LINE = conf.get("COUNTING_LINE", ((640, 100), (640, 620)))
 PERSON_CLASS = 0
 
-WIDTH = conf.get("WIDTH", 1920)
-HEIGHT = conf.get("HEIGHT", 1080)
-
-CAM_GAIN = conf.get("GAIN", 2.0)
-
 LINE_ZONE = sv.LineZone(
-    start=sv.Point(x=int(COUNTING_LINE[0][0]), y=int(COUNTING_LINE[0][1])),
-    end=sv.Point(x=int(COUNTING_LINE[1][0]), y=int(COUNTING_LINE[1][1])),
+    start=sv.Point(x=0, y=0),
+    end=sv.Point(x=1, y=1),
 )
+
+def new_zone():
+    global LINE_ZONE
+    l = conf.get("imx500.line_pos", [[0, 0], [100, 100]])
+
+    if not (LINE_ZONE.vector.start.x == l[0][0] and \
+        LINE_ZONE.vector.start.y == l[0][1] and \
+        LINE_ZONE.vector.end.x == l[1][0] and \
+        LINE_ZONE.vector.end.y == l[1][1]):
+
+        LINE_ZONE = sv.LineZone(
+            start=sv.Point(x=int(l[0][0]), y=int(l[0][1])),
+            end=sv.Point(x=int(l[1][0]), y=int(l[1][1])),
+        )
+
+new_zone()
 
 box_annotator = sv.BoxAnnotator()
 label_annotator = sv.LabelAnnotator()
@@ -40,16 +50,14 @@ line_annotator = sv.LineZoneAnnotator()
 
 missing_jpg = Path(__file__).parent.parent / "missing.jpg"
 
-return_frame = False
-
-intrinsics_fps = 12
-
-count_enabled = True
+def gen_controls(config):
+    keys = [ k for k in config.keys() if k.startswith("controls.") ]
+    return { k.split(".")[1]: config.get(k) for k in keys}
 
 def create_camera(
     capture_images: bool = False,
 ) -> tuple[IMX500, Picamera2]:
-    imx500 = IMX500(MODEL)
+    imx500 = IMX500(conf.get("imx500.model"))
     intrinsics = imx500.network_intrinsics
     if intrinsics is None:
         intrinsics = NetworkIntrinsics()
@@ -58,13 +66,12 @@ def create_camera(
         raise RuntimeError(f"Expected object-detection model, got {intrinsics.task!r}")
     intrinsics.update_with_defaults()
 
-    intrinsics_fps = intrinsics.inference_rate
+    conf.update({"imx500.fps": int(intrinsics.inference_rate)})
     camera = Picamera2(imx500.camera_num)
 
-    pprint.pp(camera.camera_controls)
     preview_options = {
-        "main": { "size": (WIDTH, HEIGHT), "format": "RGB888" },
-        "controls": {"FrameRate": intrinsics_fps},
+        "main": { "size": (conf.get("imx500.width"), conf.get("imx500.height")), "format": "RGB888" },
+        "controls": {"FrameRate": conf.get("imx500.fps")},
         "buffer_count": 12,
     }
     camera.configure(camera.create_preview_configuration(**preview_options))
@@ -77,6 +84,19 @@ def create_camera(
         
     return imx500, camera
 
+
+def update_config():
+    global conf
+    conf = config.load("camera")
+    
+    ctrls = gen_controls(conf)
+    print(ctrls)
+    try:
+        camera.set_controls(ctrls)
+    except Exception as e:
+        print("Error while setting controls", e)
+    
+    new_zone()
 
 def find_people(
     imx500: IMX500,
@@ -147,11 +167,9 @@ def annotate_frame(
     )
     return line_annotator.annotate(frame=scene, line_counter=line_zone)
 
+imx500, camera = create_camera()
 
-
-def main_count_loop(callback, detect_floor=0.2, track_timeout = 2, track_threshold = 0.5, confidence_threshold = 0.5, min_consecutive_frames = 2) -> None:
-
-    imx500, camera = create_camera()
+def main_count_loop(callback) -> None:
 
     imx500.show_network_fw_progress_bar()
 
@@ -163,19 +181,22 @@ def main_count_loop(callback, detect_floor=0.2, track_timeout = 2, track_thresho
             time.sleep(2)
 
     tracker = ByteTrackTracker(
-        lost_track_buffer=round(track_timeout * 30),
-        frame_rate=intrinsics_fps,
-        track_activation_threshold=confidence_threshold,
-        minimum_consecutive_frames=min_consecutive_frames,
-        high_conf_det_threshold=track_threshold,
+        lost_track_buffer=round(conf.get("imx500.track_timeout", 2) * 30),
+        frame_rate=conf.get("imx500.fps", 30),
+        track_activation_threshold=conf.get("imx500.confidence_threshold", 0.5),
+        minimum_consecutive_frames=conf.get("imx500.min_consecutive_frames", 2),
+        high_conf_det_threshold=conf.get("imx500.track_threshold", 0.5),
     )
 
-    while camera.is_open and count_enabled:
+    while camera.is_open and conf.get("imx500.enabled"):
         request = camera.capture_request()
+        frame = None
         try:
             metadata = request.get_metadata()
-            detections = find_people(imx500, camera, metadata, detect_floor)
-            frame = request.make_array("main")
+            detections = find_people(imx500, camera, metadata, conf.get("imx500.detect_floor", 0.2))
+            
+            if conf.get("display_frame"):
+                frame = request.make_array("main")
         finally:
             request.release()
 
@@ -183,7 +204,7 @@ def main_count_loop(callback, detect_floor=0.2, track_timeout = 2, track_thresho
             tracked = tracker.update(detections)
             LINE_ZONE.trigger(tracked)
 
-            if return_frame:
+            if conf.get("display_frame"):
                 frame = annotate_frame(
                     frame,
                     detections,
