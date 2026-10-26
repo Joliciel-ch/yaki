@@ -66,7 +66,12 @@ def setup() -> None:
 
         def refresh():
             while notifications:
-                ui.notify(notifications.popleft(), type="info")
+                with ui.dialog() as dialog, ui.card():
+                    ui.label(notifications.popleft()).classes("text-xl")
+                    ui.button("close", on_click=dialog.close).props("outline")
+                dialog.open()
+                ui.timer(5, dialog.close, once=True)
+                #ui.notification(notifications.popleft(), type="info", close_button=True, multi_line=True).props("html=true")
 
         ui.timer(2, refresh)
 
@@ -112,7 +117,10 @@ def setup() -> None:
         # print(f"recevied data from {name}", data)
         diff = int(app.storage.general["config"]["visitors"]) - int(data.get("count", 0))
         app.storage.general["config"]["visitors"] = int(data.get("count", 0))
-        notifications.append(f"{diff} person(s) entered!")
+        if diff > 0:
+            notifications.append(f"{abs(diff)} personnes(s) sont entrées")
+        else:
+            notifications.append(f"{abs(diff)} personne(s) sont sorties")
         records.server.create_record(data, name)
         return Response("thanks!")
 
@@ -124,7 +132,7 @@ def setup() -> None:
         app.storage.general["config"]["clients"].update(
             { f"{data.get('name')}": dict(data) }
         )
-        notifications.append(f"<h1>{data.get('name')} said hello! {time.time()}</h1>")
+        notifications.append(f"camera '{data.get('name')}' said hello!</h1>")
 
         config.save()
         return Response("hello There !")
