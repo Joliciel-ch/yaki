@@ -1,0 +1,112 @@
+{
+  "server": {
+    "visitors": 0,
+    "staff_planning": {
+      "0": 20,
+      "1": 20,
+      "2": 20,
+      "3": 20,
+      "4": 20,
+      "5": 20,
+      "6": 20
+    },
+    "correction": 0,
+    "maximum": 100,
+    "caution_%": 80,
+    "alert_%": 90,
+    "opening_time": "10:00",
+    "closing_time": "19:00",
+    "update_region_points": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ]
+    ],
+    "clients": {
+      "local": {
+        "host": "0.0.0.0",
+        "port": 8081,
+        "server_host": "127.0.0.1",
+        "server_port": 8080,
+        "type": "imx500",
+        "name": "local",
+        "recording": false,
+        "imx500.enabled": true,
+        "imx500.model": "/usr/share/imx500-models/imx500_network_yolo11n_pp.rpk",
+        "imx500.line_pos": [
+          [
+            887,
+            1055
+          ],
+          [
+            857,
+            111
+          ]
+        ],
+        "imx500.invert_ins_outs": false,
+        "imx500.track_timeout": 3,
+        "imx500.track_threshold": 0.35,
+        "imx500.confidence_threshold": 0.5,
+        "imx500.min_consecutive_frames": 1,
+        "imx500.detect_floor": 0.3,
+        "imx500.fps": 8,
+        "imx500.width": 1920,
+        "imx500.height": 1080,
+        "controls.AnalogueGain": 21.4,
+        "controls.Brightness": -0.05,
+        "controls.Contrast": 1,
+        "controls.AeEnable": true,
+        "controls.AeExposureMode": 1,
+        "controls.AeMeteringMode": 2,
+        "controls.ExposureValue": -1.35,
+        "controls.AeConstraintMode": 2,
+        "controls.AnalogueGainMode": 1,
+        "display_frame": true
+      }
+    }
+  },
+  "camera": {
+    "host": "0.0.0.0",
+    "port": 8081,
+    "server_host": "127.0.0.1",
+    "server_port": 8080,
+    "type": "imx500",
+    "name": "local",
+    "imx500.enabled": true,
+    "imx500.model": "/usr/share/imx500-models/imx500_network_yolo11n_pp.rpk",
+    "imx500.line_pos": [
+      [
+        887,
+        1055
+      ],
+      [
+        857,
+        111
+      ]
+    ],
+    "imx500.invert_ins_outs": false,
+    "imx500.track_timeout": 3,
+    "imx500.track_threshold": 0.35,
+    "imx500.confidence_threshold": 0.5,
+    "imx500.min_consecutive_frames": 1,
+    "imx500.detect_floor": 0.3,
+    "imx500.fps": 8,
+    "imx500.width": 1920,
+    "imx500.height": 1080,
+    "controls.AnalogueGain": 21.4,
+    "controls.Brightness": -0.05,
+    "controls.Contrast": 1,
+    "controls.AeEnable": true,
+    "controls.AeExposureMode": 1,
+    "controls.AeMeteringMode": 2,
+    "controls.ExposureValue": -1.35,
+    "controls.AeConstraintMode": 2,
+    "display_frame": true,
+    "controls.AnalogueGainMode": 1,
+    "recording": false
+  }
+}

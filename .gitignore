@@ -1,0 +1,6 @@
+*.jsonl
+*.bak
+*.mp4
+.nicegui/
+.venv/
+__pycache__/
