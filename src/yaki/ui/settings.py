@@ -142,11 +142,16 @@ def camera_setting(data):
         store["i"] = 1 if i == 0 else 0
         push_config({ "imx500.line_pos": store["points"] })
 
+
     with ui.card().classes("w-full"):
-        with ui.row().classes("w-full"):
+        with ui.row().classes("w-full items-center"):
             ui.label(f"Camera {data.get("name")} [{data.get("type")}]").classes("text-xl")
             ui.space()
-            ui.button("restart", on_click=lambda: httpx2.get(f'{host}/restart'))
+            ui.label("FPS")
+            ui.label().bind_text_from(cam_config, "imx500.fps")
+            ui.checkbox("Record", on_change=push_config).props(
+                "checked-icon=stop_circle unchecked-icon=radio_button_checked color=red keep-color size=xl").bind_value(cam_config, "recording")
+            ui.button("restart", color="red", on_click=lambda: httpx2.get(f'{host}/restart'))
 
         # with ui.row(align_items="center"):
 
@@ -166,8 +171,8 @@ def camera_setting(data):
                 push_config()
                 httpx2.get(f"{host}/restart")
             
-            with ui.expansion("Neural Network Settings").classes("w-full"):
-                ui.checkbox("invert in and outs").bind_value(cam_config, "imx500.invert_ins_outs")
+            with ui.expansion("Neural Network Settings").classes("w-full gap-1"):
+                #ui.checkbox("invert in and outs").bind_value(cam_config, "imx500.invert_ins_outs")
                 ui.label("detect floor")
                 ui.slider(min=0, max=1, step=0.05).props("label-always label").classes("w-full").bind_value(cam_config, "imx500.detect_floor")
                 ui.label("tracking timeout")
@@ -181,7 +186,7 @@ def camera_setting(data):
                 ui.button("update", on_click=save_restart)
 
             
-            with ui.expansion("Camera Settings").classes("w-full"):
+            with ui.expansion("Camera Settings").classes("w-full gap-1"):
                 ui.label("Exposure")
                 ui.slider(min=-8, max=8, step=0.05).props("label-always label").classes("w-full"
                 ).bind_value(cam_config, "controls.ExposureValue")

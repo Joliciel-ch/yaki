@@ -93,6 +93,7 @@ async def cam_config(request: Request):
 
     #if "controls" in settings;
 
+
 def say_hello():
     headers = {"Content-type": "application/json",
                     "Accept": "text/plain"}
