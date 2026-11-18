@@ -132,7 +132,7 @@ def setup() -> None:
         app.storage.general["config"]["clients"].update(
             { f"{data.get('name')}": dict(data) }
         )
-        notifications.append(f"camera '{data.get('name')}' said hello!</h1>")
+        notifications.append(f"{data.get('name')} camera connected")
 
         config.save()
         return Response("hello There !")

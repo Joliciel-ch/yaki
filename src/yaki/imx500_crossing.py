@@ -22,7 +22,7 @@ from trackers import ByteTrackTracker
 
 from yaki import config
 
-encoder = H264Encoder(1000000)
+encoder = H264Encoder(bitrate=6000000, profile="high")
 
 conf = config.load("camera")
 
@@ -251,10 +251,10 @@ def main_count_loop(callback) -> None:
         #)
 
         if rec_flag is False and conf.get("recording") is True:
-            output = FfmpegOutput(f"cleanrec-{time.time()}.mp4")
+            output = FfmpegOutput(f"cleanrec-{time.strftime("%Y-%m-%d-%H%M%S")}.mp4")
             camera.start_encoder(encoder, output)
             writer = cv2.VideoWriter(
-                f"trackrec-{time.time()}.mp4",
+                f"trackrec-{time.strftime("%Y-%m-%d-%H%M%S")}.mp4",
                 cv2.VideoWriter_fourcc(*"mp4v"),
                 conf.get("imx500.fps"),
                 (1920, 1080)

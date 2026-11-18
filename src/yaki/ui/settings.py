@@ -93,10 +93,6 @@ def dialog():
 
             with ui.expansion("Options dévelopeur").classes("text-lg w-full p-0 m-0"):
                 with ui.row(align_items="baseline").classes("w-full"):
-                    ui.number("Visitors", min=0, max=1000, value=0, precision=0).bind_value(app.storage.general, ("config", "visitors"))
-                    ui.number("Manual Correction", min=-200, max=200, value=0, precision=0).bind_value(
-                        app.storage.general, ("config", "correction"), forward=lambda x: int(x))
-
                     with ui.row():
 
                         ui.button("Live View", on_click=lambda: ui.navigate.to("/cameras"))
@@ -108,6 +104,12 @@ def dialog():
                                                                             ["sudo", "/usr/bin/systemctl", "reboot"],
                                                                             check=True,
                                                                             ))
+
+                    ui.number("Visitors", min=0, max=1000, value=0, precision=0).bind_value(app.storage.general, ("config", "visitors"))
+                    ui.number("Manual Correction", min=-200, max=200, value=0, precision=0).bind_value(
+                        app.storage.general, ("config", "correction"), forward=lambda x: int(x))
+
+
             
     return dialog
 
