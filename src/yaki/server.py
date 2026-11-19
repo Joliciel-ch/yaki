@@ -117,10 +117,10 @@ def setup() -> None:
         # print(f"recevied data from {name}", data)
         diff = int(app.storage.general["config"]["visitors"]) - int(data.get("count", 0))
         app.storage.general["config"]["visitors"] = int(data.get("count", 0))
-        if diff > 0:
-            notifications.append(f"{abs(diff)} personnes(s) sont entrées")
-        else:
-            notifications.append(f"{abs(diff)} personne(s) sont sorties")
+        #if diff > 0:
+        #    notifications.append(f"{abs(diff)} personnes(s) sont entrées")
+        #else:
+        #    notifications.append(f"{abs(diff)} personne(s) sont sorties")
         records.server.create_record(data, name)
         return Response("thanks!")
 

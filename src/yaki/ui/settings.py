@@ -202,7 +202,7 @@ def camera_setting(data):
                 ui.slider(min=-1, max=1, step=0.05).props("label-always label").classes("w-full"
                 ).bind_value(cam_config, "controls.Brightness")
                 ui.label("Contrast")
-                ui.slider(min=0, max=1, step=0.05).props("label-always label").classes("w-full"
+                ui.slider(min=0, max=2, step=0.05).props("label-always label").classes("w-full"
                 ).bind_value(cam_config, "controls.Contrast")
                 #ui.checkbox("Stats").bind_value(cam_config, "controls.StatsOutputEnable")
                 
